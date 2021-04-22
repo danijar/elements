@@ -36,9 +36,10 @@ class FlagParser:
         key, vals = arg, []
         vals = []
       else:
-        if not key:
-          raise ValueError(f"Value {arg} was not preceeded by a flag key.")
-        vals.append(arg)
+        if key:
+          vals.append(arg)
+        else:
+          remaining.append(arg)
     self._submit_entry(key, vals, parsed, remaining)
     return self._config.update(parsed), remaining
 
@@ -58,6 +59,8 @@ class FlagParser:
     else:
       remaining.extend([key] + vals)
       return
+    if not keys:
+      raise KeyError(f"Flag '{key}' did not match any keys.")
     if not vals:
       raise ValueError(f"Flag '{key}' was not followed by any values.")
     for key in keys:
@@ -75,7 +78,10 @@ def parse_flag_value(default, value, key):
   if default is None:
     return value
   if isinstance(default, bool):
-    return bool(['False', 'True'].index(value))
+    try:
+      return bool(['False', 'True'].index(value))
+    except ValueError:
+      raise TypeError(f"Expected bool but got '{value}' for key '{key}'.")
   if isinstance(default, int):
     value = float(value)  # Allow scientific notation for integers.
     if float(int(value)) != value:
