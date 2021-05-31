@@ -60,6 +60,9 @@ class Config(dict):
       for key in keys:
         old = result[key]
         try:
+          if isinstance(old, int) and isinstance(new, float):
+            if float(int(new)) != new:
+              raise ValueError
           result[key] = type(old)(new)
         except (ValueError, TypeError):
           raise TypeError(
