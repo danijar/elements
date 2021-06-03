@@ -4,7 +4,7 @@ import pathlib
 
 setuptools.setup(
     name='elements',
-    version='0.2.3',
+    version='0.2.4',
     description='Building blocks for productive research.',
     url='http://github.com/danijar/elements',
     long_description=pathlib.Path('README.md').read_text(),

@@ -144,7 +144,7 @@ def encode_gif(frames, fps):
       f'-r {fps:.02f} -f gif -'])
   proc = Popen(cmd.split(' '), stdin=PIPE, stdout=PIPE, stderr=PIPE)
   for image in frames:
-    proc.stdin.write(image.tostring())
+    proc.stdin.write(image.tobytes())
   out, err = proc.communicate()
   if proc.returncode:
     raise IOError('\n'.join([' '.join(cmd), err.decode('utf8')]))
