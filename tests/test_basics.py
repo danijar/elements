@@ -30,7 +30,7 @@ class TestBasics:
       _ = config.update({'new': 1})
     with pytest.raises(TypeError):
       _ = config.update({'one.two': 'string'})
-    with pytest.raises(TypeError):
+    with pytest.raises(AttributeError):
       config.one.two = 1
     with pytest.raises(TypeError):
       elements.Config({'foo': lambda: None})
