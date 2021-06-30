@@ -57,10 +57,10 @@ class FlagParser:
     elif name in self._config:
       keys = [name]
     else:
+      keys = []
+    if not keys:
       remaining.extend([key] + vals)
       return
-    if not keys:
-      raise KeyError(f"Flag '{key}' did not match any keys.")
     if not vals:
       raise ValueError(f"Flag '{key}' was not followed by any values.")
     for key in keys:
