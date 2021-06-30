@@ -9,20 +9,18 @@ class Config(dict):
 
   def __init__(self, *args, **kwargs):
     mapping = dict(*args, **kwargs)
-    mapping = self._ensure_nesting(mapping)
-    mapping = self._ensure_types(mapping)
-    super().__init__(mapping)
-    flat = []
-    for key, value in self.items():
-      if isinstance(value, type(self)):
-        flat += [(f'{key}{self.SEP}{k}', v) for k, v in value.flat.items()]
-      else:
-        flat.append((key, value))
-    self.__dict__['_flat'] = tuple(flat)
+    mapping = self._flatten(mapping)
+    mapping = self._ensure_keys(mapping)
+    mapping = self._ensure_values(mapping)
+    self._flat = mapping
+    self._nested = self._nest(mapping)
+    # Need to assign the values to the base class dictionary so that
+    # conversion to dict does not loose the content.
+    super().__init__(self._nested)
 
   @property
   def flat(self):
-    return dict(self._flat)
+    return self._flat.copy()
 
   def __contains__(self, name):
     try:
@@ -32,24 +30,55 @@ class Config(dict):
       return False
 
   def __getattr__(self, name):
-    return self[name]
+    if name.startswith('_'):
+      return super().__getattr__(name)
+    try:
+      return self[name]
+    except KeyError:
+      raise AttributeError(name)
 
   def __getitem__(self, name):
-    result = self
+    result = self._nested
     for part in name.split(self.SEP):
-      result = dict.__getitem__(result, part)
+      result = result[part]
+    if isinstance(result, dict):
+      result = type(self)(result)
     return result
 
   def __setattr__(self, key, value):
-    raise TypeError('Config objects are immutable. Use update().')
+    if key.startswith('_'):
+      return super().__setattr__(key, value)
+    message = f"Tried to set key '{key}' on immutable config. Use update()."
+    raise AttributeError(message)
 
   def __setitem__(self, key, value):
-    raise TypeError('Config objects are immutable. Use update().')
+    if key.startswith('_'):
+      return super().__setitem__(key, value)
+    message = f"Tried to set key '{key}' on immutable config. Use update()."
+    raise AttributeError(message)
+
+  def __reduce__(self):
+    return (type(self), (dict(self),))
+
+  def __str__(self):
+    lines = ['\nConfig:']
+    keys, vals, typs = [], [], []
+    for key, val in self.flat.items():
+      keys.append(key + ':')
+      vals.append(self._format_value(val))
+      typs.append(self._format_type(val))
+    max_key = max(len(k) for k in keys) if keys else 0
+    max_val = max(len(v) for v in vals) if vals else 0
+    for key, val, typ in zip(keys, vals, typs):
+      key = key.ljust(max_key)
+      val = val.ljust(max_val)
+      lines.append(f'{key}  {val}  ({typ})')
+    return '\n'.join(lines)
 
   def update(self, *args, **kwargs):
-    result = self.flat.copy()
-    inputs = Config(*args, **kwargs)
-    for key, new in inputs.flat.items():
+    result = self._flat.copy()
+    inputs = self._flatten(dict(*args, **kwargs))
+    for key, new in inputs.items():
       if self.IS_PATTERN.match(key):
         pattern = re.compile(key)
         keys = {k for k in result if pattern.match(k)}
@@ -62,7 +91,8 @@ class Config(dict):
         try:
           if isinstance(old, int) and isinstance(new, float):
             if float(int(new)) != new:
-              raise ValueError
+              message = f"Cannot convert fractional float {new} to int."
+              raise ValueError(message)
           result[key] = type(old)(new)
         except (ValueError, TypeError):
           raise TypeError(
@@ -70,38 +100,40 @@ class Config(dict):
               f"of value '{old}' for key '{key}'.")
     return type(self)(result)
 
-  def __str__(self):
-    lines = ['\nConfig:']
-    keys, vals, typs = [], [], []
-    for key, val in self.flat.items():
-      keys.append(key + ':')
-      vals.append(self._format_value(val))
-      typs.append(self._format_type(val))
-    max_key = max(len(k) for k in keys)
-    max_val = max(len(v) for v in vals)
-    for key, val, typ in zip(keys, vals, typs):
-      key = key.ljust(max_key)
-      val = val.ljust(max_val)
-      lines.append(f'{key}  {val}  ({typ})')
-    return '\n'.join(lines)
-
-  def _ensure_nesting(self, inputs):
+  def _flatten(self, mapping):
     result = {}
-    for key, value in inputs.items():
+    for key, value in mapping.items():
+      if isinstance(value, dict):
+        for k, v in self._flatten(value).items():
+          if self.IS_PATTERN.match(key) or self.IS_PATTERN.match(k):
+            combined = f'{key}\\{self.SEP}{k}'
+          else:
+            combined = f'{key}{self.SEP}{k}'
+          result[combined] = v
+      else:
+        result[key] = value
+    return result
+
+  def _nest(self, mapping):
+    result = {}
+    for key, value in mapping.items():
       parts = key.split(self.SEP)
       node = result
       for part in parts[:-1]:
         if part not in node:
-          node[part] = dict()
+          node[part] = {}
         node = node[part]
       node[parts[-1]] = value
     return result
 
-  def _ensure_types(self, inputs):
-    result = json.loads(json.dumps(inputs))
+  def _ensure_keys(self, mapping):
+    for key in mapping:
+      assert not self.IS_PATTERN.match(key), key
+    return mapping
+
+  def _ensure_values(self, mapping):
+    result = json.loads(json.dumps(mapping))
     for key, value in result.items():
-      if isinstance(value, dict):
-        value = type(self)(value)
       if isinstance(value, list):
         value = tuple(value)
       if isinstance(value, tuple):
@@ -109,7 +141,8 @@ class Config(dict):
           message = 'Empty lists are disallowed because their type is unclear.'
           raise TypeError(message)
         if not isinstance(value[0], (str, float, int, bool)):
-          message = 'Lists can only contain strings, floats, ints, or bools.'
+          message = 'Lists can only contain strings, floats, ints, bools'
+          message += f' but not {type(value[0])}'
           raise TypeError(message)
         if not all(isinstance(x, type(value[0])) for x in value[1:]):
           message = 'Elements of a list must all be of the same type.'
