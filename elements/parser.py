@@ -33,8 +33,11 @@ class FlagParser:
       if arg.startswith('--'):
         if key:
           self._submit_entry(key, vals, parsed, remaining)
-        key, vals = arg, []
-        vals = []
+        if '=' in arg:
+          key, val = arg.split('=', 1)
+          vals = [val]
+        else:
+          key, vals = arg, []
       else:
         if key:
           vals.append(arg)
