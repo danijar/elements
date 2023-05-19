@@ -1,20 +1,45 @@
+import time
+
+
 class Every:
 
-  def __init__(self, every):
+  def __init__(self, every, initial=True):
     self._every = every
-    self._last = None
+    self._initial = initial
+    self._prev = None
 
   def __call__(self, step):
     step = int(step)
-    if not self._every:
-      return False
-    if self._last is None:
-      self._last = step
+    if self._every < 0:
       return True
-    if step >= self._last + self._every:
-      self._last += self._every
+    if self._every == 0:
+      return False
+    if self._prev is None:
+      self._prev = (step // self._every) * self._every
+      return self._initial
+    if step >= self._prev + self._every:
+      self._prev += self._every
       return True
     return False
+
+
+class Ratio:
+
+  def __init__(self, ratio):
+    assert ratio >= 0, ratio
+    self._ratio = ratio
+    self._prev = None
+
+  def __call__(self, step):
+    step = int(step)
+    if self._ratio == 0:
+      return 0
+    if self._prev is None:
+      self._prev = step
+      return 1
+    repeats = int((step - self._prev) * self._ratio)
+    self._prev += repeats / self._ratio
+    return repeats
 
 
 class Once:
@@ -39,3 +64,25 @@ class Until:
     if not self._until:
       return True
     return step < self._until
+
+
+class Clock:
+
+  def __init__(self, every):
+    self._every = every
+    self._prev = None
+
+  def __call__(self, step=None):
+    if self._every < 0:
+      return True
+    if self._every == 0:
+      return False
+    now = time.time()
+    if self._prev is None:
+      self._prev = now
+      return True
+    if now >= self._prev + self._every:
+      # self._prev += self._every
+      self._prev = now
+      return True
+    return False

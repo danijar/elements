@@ -1,5 +1,8 @@
+import io
 import json
 import re
+
+from . import path
 
 
 class Config(dict):
@@ -15,12 +18,35 @@ class Config(dict):
     self._flat = mapping
     self._nested = self._nest(mapping)
     # Need to assign the values to the base class dictionary so that
-    # conversion to dict does not loose the content.
+    # conversion to dict does not lose the content.
     super().__init__(self._nested)
 
   @property
   def flat(self):
     return self._flat.copy()
+
+  def save(self, filename):
+    filename = path.Path(filename)
+    if filename.suffix == '.json':
+      filename.write(json.dumps(dict(self)))
+    elif filename.suffix in ('.yml', '.yaml'):
+      import ruamel.yaml as yaml
+      with io.StringIO() as stream:
+        yaml.safe_dump(dict(self), stream)
+        filename.write(stream.getvalue())
+    else:
+      raise NotImplementedError(filename.suffix)
+
+  @classmethod
+  def load(cls, filename):
+    filename = path.Path(filename)
+    if filename.suffix == '.json':
+      return cls(json.loads(filename.read_text()))
+    elif filename.suffix in ('.yml', '.yaml'):
+      import ruamel.yaml as yaml
+      return cls(yaml.safe_load(filename.read_text()))
+    else:
+      raise NotImplementedError(filename.suffix)
 
   def __contains__(self, name):
     try:
@@ -40,7 +66,10 @@ class Config(dict):
   def __getitem__(self, name):
     result = self._nested
     for part in name.split(self.SEP):
-      result = result[part]
+      try:
+        result = result[part]
+      except TypeError:
+        raise KeyError
     if isinstance(result, dict):
       result = type(self)(result)
     return result
@@ -97,7 +126,7 @@ class Config(dict):
         except (ValueError, TypeError):
           raise TypeError(
               f"Cannot convert '{new}' to type '{type(old).__name__}' " +
-              f"of value '{old}' for key '{key}'.")
+              f"for key '{key}' with previous value '{old}'.")
     return type(self)(result)
 
   def _flatten(self, mapping):

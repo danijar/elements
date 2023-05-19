@@ -1,21 +1,13 @@
 import sys
 import pathlib
 
-sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
+sys.path.append(str(pathlib.Path(__file__).parent.parent))
 
 import elements
 import pytest
 
 
 class TestBasics:
-
-  def test_counter(self):
-    counter = elements.Counter()
-    assert int(counter) == 0
-    counter.increment()
-    assert int(counter) == 1
-    counter.increment(3)
-    assert int(counter) == 4
 
   def test_config(self):
     config = elements.Config({'one.two': 12, 'foo': {'bar': True}})
@@ -35,32 +27,30 @@ class TestBasics:
     with pytest.raises(TypeError):
       elements.Config({'foo': lambda: None})
 
-  def test_parser(self):
-    parser = elements.FlagParser(foo=12, bar={'baz': True})
-    assert parser.parse(['--bar.baz', 'False']).foo == 12
-    assert parser.parse(['--bar.baz', 'False']).bar.baz is False
-    assert parser.parse(['--bar.*', 'False']).bar.baz is False
+  def test_flags(self):
+    flags = elements.Flags(foo=12, bar={'baz': True})
+    assert flags.parse(['--bar.baz', 'False']).foo == 12
+    assert flags.parse(['--bar.baz', 'False']).bar.baz is False
+    assert flags.parse(['--bar.*', 'False']).bar.baz is False
     with pytest.raises(TypeError):
-      parser.parse(['--bar.baz', '12'])
-    with pytest.raises(KeyError):
-      parser.parse(['--.*unknown.*', '12'])
-    _, remaining = parser.parse_known(['one=two', '--foo', '42', '--three'])
+      flags.parse(['--bar.baz', '12'])
+    with pytest.raises(ValueError):
+      flags.parse(['--.*unknown.*', '12'])
+    _, remaining = flags.parse_known(['one=two', '--foo', '42', '--three'])
     assert remaining == ['one=two', '--three']
-    parser = elements.FlagParser({'foo': 12})
-    _, remaining = parser.parse_known(['--help'], exit_on_help=False)
+    flags = elements.Flags({'foo': 12})
+    _, remaining = flags.parse_known(['--help'], help_exits=False)
     assert remaining == ['--help']
 
   def test_logger(self, capsys):
-    step = elements.Counter()
-    outputs = [elements.TerminalOutput()]
-    logger = elements.Logger(step, outputs)
+    logger = elements.Logger([elements.logger.TerminalOutput()])
     logger.scalar('name', 15)
     logger.write()
     output = capsys.readouterr()
     print(output)
 
   def test_every(self):
-    should = elements.Every(5)
+    should = elements.when.Every(5)
     result = []
     for i in range(16):
       if should(i):
@@ -68,7 +58,7 @@ class TestBasics:
     assert result == [0, 5, 10, 15]
 
   def test_once(self):
-    should = elements.Once()
+    should = elements.when.Once()
     result = []
     for i in range(16):
       if should():
@@ -76,7 +66,7 @@ class TestBasics:
     assert result == [0]
 
   def test_until(self):
-    should = elements.Until(6)
+    should = elements.when.Until(6)
     result = []
     for i in range(16):
       if should(i):
