@@ -1,3 +1,5 @@
+[![PyPI](https://img.shields.io/pypi/v/elements.svg)](https://pypi.python.org/pypi/elements/#history)
+
 # 🔥 Elements
 
 Building blocks for productive research.
@@ -10,9 +12,10 @@ pip install elements
 
 ## Features
 
-Elements aims to to provide simple solutions to common problems in research
-code. It is also hackable. If you need to change some of the code, we encourage
-you to fork the corresponding file into your project directory and make edits.
+Elements aims to provide well thought out solutions to common problems in
+research code. It is also hackable. If you need to change some of the code, we
+encourage you to fork the corresponding file into your project directory and
+make edits.
 
 ### `elements.Path`
 
@@ -21,25 +24,33 @@ filesystems. Comes with support for local filesystems and GCS buckets.
 
 ```python
 path = elements.Path('gs://bucket/path/to/file.txt')
-path.parent                          # gs://bucket/path/to
-path.name                            # file.txt
-path.stem                            # file
-path.suffix                          # .txt
-path.read(mode='r')                  # Content of the file as string
-path.read(mode='rb')                 # Content of the file as bytes
-path.write(content, mode='w')        # Write string to the file
-path.write(content, mode='wb')       # Write bytes to the file
-list(path.parent.glob('*')           # Get all sibling paths
-path.exists()                        # True
-path.isdir()                         # False
-path.isfile()                        # True
-(path.parent / 'foo').mkdirs()       # Creates directory including parents
-path.remove()                        # Deletes a file or empty directory
-path.parent.rmtree()                 # Deletes directory and its content
-path.copy(path.parent / 'copy.txt')  # Makes a copy
-path.move(path.parent / 'copy.txt')  # Moves the file
-with path.open(mode='r') as f:       # Create a file pointer
+
+# String operations
+path.parent                           # gs://bucket/path/to
+path.name                             # file.txt
+path.stem                             # file
+path.suffix                           # .txt
+
+# File operations
+path.read(mode='r')                   # Content of the file as string
+path.read(mode='rb')                  # Content of the file as bytes
+path.write(content, mode='w')         # Write string to the file
+path.write(content, mode='wb')        # Write bytes to the file
+with path.open(mode='r') as f:        # Create a file pointer
   pass
+
+# File system checks
+path.parent.glob('*')                 # Get all sibling paths
+path.exists()                         # True
+path.isdir()                          # False
+path.isfile()                         # True
+
+# File system changes
+(path.parent / 'foo').mkdirs()        # Creates directory including parents
+path.remove()                         # Deletes a file or empty directory
+path.parent.rmtree()                  # Deletes directory and its content
+path.copy(path.parent / 'copy.txt')   # Makes a copy
+path.move(path.parent / 'moved.txt')  # Moves the file
 ```
 
 ### `elements.Checkpoint`
@@ -89,10 +100,10 @@ config = elements.Config(
     foo=dict(bar=42),
 )
 
-print(config)  # Pretty printing
-print(config.foo.bar)  # Attribute syntax
-print(config['foo']['bar'])  # Dictionary syntax
-config.logdir = 'path/to/new/dir'  # AttributeError
+print(config)                      # Pretty printing
+print(config.foo.bar)              # Attribute syntax
+print(config['foo']['bar'])        # Dictionary syntax
+config.logdir = 'path/to/new/dir'  # Not allowed
 
 # Access a copy of the flattened dictionary underlying the config.
 config.flat == {'logdir': 'path/to/dir', 'foo.bar': 42}
@@ -102,8 +113,8 @@ new_config = config.update({'foo.bar': 43})
 
 # Types are enforced when updating configs, but values of other types are
 # allowed as long as they can be converted without loss of information.
-new_config = config.update({'foo.bar': 1e5})  # OK
-new_config = config.update({'foo.bar': 1.5})  # TypeError
+new_config = config.update({'foo.bar': float(1e5)})  # Allowed
+new_config = config.update({'foo.bar': float(1.5)})  # Not allowed
 
 # Configs can be saved and loaded in JSON and YAML formats.
 config.save('config.json')
@@ -168,7 +179,7 @@ Provided backends:
 - `elements.logger.TerminalOutput(pattern)`: Print scalars to the terminal. Can
   filter to fewer metrics via regex.
 - `elements.logger.JSONLOutput(logdir, filename, pattern)`: Write scalars to
-  JSONL files. Can we loaded with `pandas.read_json(filename, lines=True)`.
+  JSONL files. Can be loaded with `pandas.read_json(filename, lines=True)`.
 - `elements.logger.TensorBoardOutput(logdir)`: Scalars, histograms, images,
   GIFs. Automatically starts new event files when the current one exceeds a
   size limit to support cloud storage where appding to files requires a full
@@ -237,8 +248,9 @@ stats == {
 
 ### `elements.when`
 
-Helpers for running code at defined times, such as every fixed
-number of steps or seconds or a certain fraction of the time.
+Helpers for running code at defined times, such as every fixed number of steps
+or seconds or a certain fraction of the time. The counting is robust, so when
+you skip a step it will run the code the next time to catch up.
 
 ```python
 should = elements.when.Every(100)
@@ -276,6 +288,9 @@ Data is stored in the `run` format in gzipped JSON files. Each file contains a
 list of one or more run. A run is a dictionary with the keys `task`, `method`,
 `seed`, `xs`, `ys`. The task, method, and seed are string fields, whereas xs
 and ys are lists of equal length containing numbers for the data to plot.
+
+Take a look at `plotting.py` in the repository to see the list of all available
+functions, beyond what is used in this snippet.
 
 ```python
 from elements import plotting

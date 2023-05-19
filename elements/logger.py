@@ -7,7 +7,6 @@ import time
 
 import numpy as np
 
-from . import counter
 from . import path
 
 
