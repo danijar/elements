@@ -10,7 +10,7 @@ setuptools.setup(
     long_description=pathlib.Path('README.md').read_text(),
     long_description_content_type='text/markdown',
     packages=['elements'],
-    install_requires=['numpy', 'imageio'],
+    install_requires=['numpy', 'imageio', 'matplotlib'],
     classifiers=[
         'Intended Audience :: Science/Research',
         'License :: OSI Approved :: MIT License',
