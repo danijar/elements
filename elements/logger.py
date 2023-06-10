@@ -287,7 +287,7 @@ class WandBOutput:
           value = (255 * np.clip(value, 0, 1)).astype(np.uint8)
         bystep[step][name] = wandb.Video(value)
     for step, metrics in bystep.items():
-      self._wandb.log(metrics, step=step)
+      wandb.log(metrics, step=step)
 
 
 class MLFlowOutput:
