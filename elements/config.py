@@ -41,10 +41,10 @@ class Config(dict):
   def load(cls, filename):
     filename = path.Path(filename)
     if filename.suffix == '.json':
-      return cls(json.loads(filename.read_text()))
+      return cls(json.loads(filename.read()))
     elif filename.suffix in ('.yml', '.yaml'):
       import ruamel.yaml as yaml
-      return cls(yaml.safe_load(filename.read_text()))
+      return cls(yaml.safe_load(filename.read()))
     else:
       raise NotImplementedError(filename.suffix)
 
