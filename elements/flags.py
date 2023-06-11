@@ -10,7 +10,7 @@ class Flags:
     self._config = config.Config(*args, **kwargs)
 
   def parse(self, argv=None, help_exits=True):
-    parsed, remaining = self.parse_known(argv)
+    parsed, remaining = self.parse_known(argv, help_exits)
     for flag in remaining:
       if flag.startswith('--'):
         raise ValueError(f"Flag '{flag}' did not match any config keys.")
