@@ -1,3 +1,5 @@
+__version__ = '2.1.1'
+
 from .agg import Agg
 from .checkpoint import Checkpoint
 from .config import Config
