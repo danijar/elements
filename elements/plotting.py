@@ -5,7 +5,6 @@ import pathlib
 import warnings
 
 import numpy as np
-from matplotlib import ticker
 
 
 COLORS = (
@@ -43,6 +42,7 @@ def save(fig, filename):
 def plots(
     amount, cols=4, size=(2, 2.3), xticks=4, yticks=5, grid=(1, 1), **kwargs):
   import matplotlib.pyplot as plt
+  from matplotlib import ticker
   cols = min(amount, cols)
   rows = int(np.ceil(amount / cols))
   size = (cols * size[0], rows * size[1])
