@@ -24,3 +24,6 @@ jobs:
     - name: Run tests
       run: |
         python -m pytest tests
+    - name: Package installation
+      run: |
+        python -m pip install elements
