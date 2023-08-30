@@ -43,7 +43,8 @@ class TestBasics:
     assert remaining == ['--help']
 
   def test_logger(self, capsys):
-    logger = elements.Logger([elements.logger.TerminalOutput()])
+    step = elements.Counter()
+    logger = elements.Logger(step, [elements.logger.TerminalOutput()])
     logger.scalar('name', 15)
     logger.write()
     output = capsys.readouterr()

@@ -1,0 +1,7 @@
+colored
+gil_load
+matplotlib
+mlflow
+pytest
+tensorflow-cpu
+wandb

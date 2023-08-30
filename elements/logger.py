@@ -7,7 +7,9 @@ import time
 
 import numpy as np
 
+from . import printing
 from . import path
+from . import timer
 
 
 class Logger:
@@ -21,13 +23,19 @@ class Logger:
     self._last_time = None
     self._metrics = []
 
+  @timer.section('logger_add')
   def add(self, mapping, prefix=None):
+    mapping = dict(mapping)
+    # print('logger add:', len(mapping))
+    assert len(mapping) <= 1000, list(mapping.keys())
+    for key in mapping.keys():
+      assert len(key) <= 200, (len(key), key[:200] + '...')
     step = int(self.step) * self.multiplier
-    for name, value in dict(mapping).items():
+    for name, value in mapping.items():
       name = f'{prefix}/{name}' if prefix else name
-      if isinstance(value, str):
-        pass
-      else:
+      if isinstance(value, np.ndarray) and np.issubdtype(value.dtype, str):
+        value = str(value)
+      if not isinstance(value, str):
         value = np.asarray(value)
         if len(value.shape) not in (0, 1, 2, 3, 4):
           raise ValueError(
@@ -59,6 +67,7 @@ class Logger:
     assert isinstance(value, str), (type(value), str(value)[:100])
     self.add({name: value})
 
+  @timer.section('logger_write')
   def write(self, fps=False):
     if fps:
       value = self._compute_fps()
@@ -69,6 +78,15 @@ class Logger:
     for output in self.outputs:
       output(tuple(self._metrics))
     self._metrics.clear()
+
+  def close(self):
+    self.write()
+    for output in self.outputs:
+      if hasattr(output, 'wait'):
+        try:
+          output.wait()
+        except Exception as e:
+          print(f'Error waiting on output: {e}')
 
   def _compute_fps(self):
     step = int(self.step) * self.multiplier
@@ -89,49 +107,56 @@ class AsyncOutput:
     self._callback = callback
     self._parallel = parallel
     if parallel:
-      self._executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+      self._worker = concurrent.futures.ThreadPoolExecutor(1, 'logger_async')
       self._future = None
+
+  def wait(self):
+    if self._parallel and self._future:
+      concurrent.futures.wait([self._future])
 
   def __call__(self, summaries):
     if self._parallel:
       self._future and self._future.result()
-      self._future = self._executor.submit(self._callback, summaries)
+      self._future = self._worker.submit(self._callback, summaries)
     else:
       self._callback(summaries)
 
 
 class TerminalOutput:
 
-  def __init__(self, pattern=r'.*', name=None):
-    self._pattern = re.compile(pattern)
+  def __init__(self, pattern=r'.*', name=None, limit=50):
+    self._pattern = (pattern != r'.*') and re.compile(pattern)
     self._name = name
-    try:
-      import rich.console
-      self._console = rich.console.Console()
-    except ImportError:
-      self._console = None
+    self._limit = limit
 
+  @timer.section('terminal')
   def __call__(self, summaries):
     step = max(s for s, _, _, in summaries)
     scalars = {
         k: float(v) for _, k, v in summaries
         if isinstance(v, np.ndarray) and len(v.shape) == 0}
-    scalars = {k: v for k, v in scalars.items() if self._pattern.search(k)}
-    formatted = {k: self._format_value(v) for k, v in scalars.items()}
-    if self._console:
-      if self._name:
-        self._console.rule(f'[green bold]{self._name} (Step {step})')
-      else:
-        self._console.rule(f'[green bold]Step {step}')
-      self._console.print(' [blue]/[/blue] '.join(
-          f'{k} {v}' for k, v in formatted.items()))
-      print('')
+    if self._pattern:
+      scalars = {k: v for k, v in scalars.items() if self._pattern.search(k)}
     else:
-      message = ' / '.join(f'{k} {v}' for k, v in formatted.items())
-      message = f'[{step}] {message}'
-      if self._name:
-        message = f'[{self._name}] {message}'
-      print(message, flush=True)
+      truncated = 0
+      if len(scalars) > self._limit:
+        truncated = len(scalars) - self._limit
+        scalars = dict(list(scalars.items())[:self._limit])
+    formatted = {k: self._format_value(v) for k, v in scalars.items()}
+    if self._name:
+      header = f'{"-"*20}[{self._name} Step {step}]{"-"*20}'
+    else:
+      header = f'{"-"*20}[Step {step}]{"-"*20}'
+    if formatted:
+      content = ' / '.join(f'{k} {v}' for k, v in formatted.items())
+    else:
+      content = 'No metrics.'
+    if self._pattern:
+      content += f"\n(Filtered by '{self._pattern.pattern}')"
+    elif truncated:
+      content += f'\n({truncated} more entries truncated;'
+      content += ' filter to see specific keys.)'
+    printing.print_(f'{header}\n{content}', flush=True)
 
   def _format_value(self, value):
     value = float(value)
@@ -158,12 +183,13 @@ class JSONLOutput(AsyncOutput):
       self, logdir, filename='metrics.jsonl', pattern=r'.*',
       strings=False, parallel=True):
     super().__init__(self._write, parallel)
-    self._filename = filename
     self._pattern = re.compile(pattern)
     self._strings = strings
-    self._logdir = path.Path(logdir)
-    self._logdir.mkdirs()
+    logdir = path.Path(logdir)
+    logdir.mkdirs()
+    self._filename = logdir / filename
 
+  @timer.section('jsonl')
   def _write(self, summaries):
     bystep = collections.defaultdict(dict)
     for step, name, value in summaries:
@@ -176,13 +202,15 @@ class JSONLOutput(AsyncOutput):
     lines = ''.join([
         json.dumps({'step': step, **scalars}) + '\n'
         for step, scalars in bystep.items()])
-    with (self._logdir / self._filename).open('a') as f:
+    printing.print_(f'Writing metrics: {self._filename}')
+    with self._filename.open('a') as f:
       f.write(lines)
 
 
 class TensorBoardOutput(AsyncOutput):
 
-  def __init__(self, logdir, fps=20, maxsize=1e9, parallel=True):
+  def __init__(
+      self, logdir, fps=20, videos=True, maxsize=1e9, parallel=True):
     super().__init__(self._write, parallel)
     self._logdir = str(logdir)
     if self._logdir.startswith('/gcs/'):
@@ -190,10 +218,15 @@ class TensorBoardOutput(AsyncOutput):
     self._fps = fps
     self._writer = None
     self._maxsize = self._logdir.startswith('gs://') and maxsize
+    self._videos = videos
     if self._maxsize:
       self._checker = concurrent.futures.ThreadPoolExecutor(max_workers=1)
       self._promise = None
+    import tensorflow as tf
+    tf.config.set_visible_devices([], 'GPU')
+    tf.config.set_visible_devices([], 'TPU')
 
+  @timer.section('tensorboard_write')
   def _write(self, summaries):
     import tensorflow as tf
     reset = False
@@ -223,18 +256,20 @@ class TensorBoardOutput(AsyncOutput):
           tf.summary.image(name, value, step)
         elif len(value.shape) == 3:
           tf.summary.image(name, value, step)
-        elif len(value.shape) == 4:
+        elif len(value.shape) == 4 and self._videos:
           self._video_summary(name, value, step)
       except Exception:
         print('Error writing summary:', name)
         raise
     self._writer.flush()
 
+  @timer.section('tensorboard_check')
   def _check(self):
     import tensorflow as tf
     events = tf.io.gfile.glob(self._logdir.rstrip('/') + '/events.out.*')
     return tf.io.gfile.stat(sorted(events)[-1]).length if events else 0
 
+  @timer.section('tensorboard_video')
   def _video_summary(self, name, video, step):
     import tensorflow as tf
     import tensorflow.compat.v1 as tf1
@@ -256,14 +291,21 @@ class TensorBoardOutput(AsyncOutput):
 
 class WandBOutput:
 
-  def __init__(self, pattern=r'.*', **kwargs):
-    import wandb
+  def __init__(self, name, config=None, pattern=r'.*'):
     self._pattern = re.compile(pattern)
-    wandb.init(**kwargs)
+    import wandb
+    wandb.init(
+        project='embodied',
+        name=name,
+        # sync_tensorboard=True,
+        entity='word-bots',
+        config=config and dict(config),
+    )
+    self._wandb = wandb
 
   def __call__(self, summaries):
-    import wandb
     bystep = collections.defaultdict(dict)
+    wandb = self._wandb
     for step, name, value in summaries:
       if not self._pattern.search(name):
         continue
@@ -286,6 +328,7 @@ class WandBOutput:
         if value.dtype != np.uint8:
           value = (255 * np.clip(value, 0, 1)).astype(np.uint8)
         bystep[step][name] = wandb.Video(value)
+
     for step, metrics in bystep.items():
       self._wandb.log(metrics, step=step)
 
@@ -293,21 +336,21 @@ class WandBOutput:
 class MLFlowOutput:
 
   def __init__(self, run_name=None, resume_id=None, config=None, prefix=None):
+    import mlflow
+    self._mlflow = mlflow
     self._prefix = prefix
     self._setup(run_name, resume_id, config)
 
   def __call__(self, summaries):
-    import mlflow
     bystep = collections.defaultdict(dict)
     for step, name, value in summaries:
       if len(value.shape) == 0 and self._pattern.search(name):
         name = f'{self._prefix}/{name}' if self._prefix else name
         bystep[step][name] = float(value)
     for step, metrics in bystep.items():
-      mlflow.log_metrics(metrics, step=step)
+      self._mlflow.log_metrics(metrics, step=step)
 
   def _setup(self, run_name, resume_id, config):
-    import mlflow
     tracking_uri = os.environ.get('MLFLOW_TRACKING_URI', 'local')
     run_name = run_name or os.environ.get('MLFLOW_RUN_NAME')
     resume_id = resume_id or os.environ.get('MLFLOW_RESUME_ID')
@@ -315,16 +358,17 @@ class MLFlowOutput:
     print('MLFlow Run Name:    ', run_name)
     print('MLFlow Resume ID:   ', resume_id)
     if resume_id:
-      runs = mlflow.search_runs(None, f'tags.resume_id="{resume_id}"')
+      runs = self._mlflow.search_runs(None, f'tags.resume_id="{resume_id}"')
       assert len(runs), ('No runs to resume found.', resume_id)
-      mlflow.start_run(run_name=run_name, run_id=runs['run_id'].iloc[0])
+      self._mlflow.start_run(run_name=run_name, run_id=runs['run_id'].iloc[0])
       for key, value in config.items():
-        mlflow.log_param(key, value)
+        self._mlflow.log_param(key, value)
     else:
       tags = {'resume_id': resume_id or ''}
-      mlflow.start_run(run_name=run_name, tags=tags)
+      self._mlflow.start_run(run_name=run_name, tags=tags)
 
 
+@timer.section('gif')
 def _encode_gif(frames, fps):
   from subprocess import Popen, PIPE
   h, w, c = frames[0].shape
