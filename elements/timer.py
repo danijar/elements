@@ -16,9 +16,9 @@ class Timer:
     self.maxs = defaultdict(lambda: 0)
     self.sums = defaultdict(lambda: 0)
     self.counts = defaultdict(lambda: 0)
-    # self.threads = defaultdict(set)
     self.start = time.perf_counter_ns()
     self.writing = False
+    self.extensions = []
 
   @contextlib.contextmanager
   def section(self, name):
@@ -34,7 +34,12 @@ class Timer:
     path = '/'.join(stack)
     start = time.perf_counter_ns()
     try:
-      yield
+      if self.extensions:
+        with contextlib.ExitStack() as es:
+          [es.enter_context(ext(path)) for ext in self.extensions]
+          yield
+      else:
+        yield
     finally:
       dur = time.perf_counter_ns() - start
       stack.pop()
@@ -44,7 +49,6 @@ class Timer:
         self.mins[path] = min(self.mins[path], dur)
         self.maxs[path] = max(self.maxs[path], dur)
         self.counts[path] += 1
-        # self.threads[path].add(threading.current_thread().name)
 
   def wrap(self, name, obj, methods):
     for method in methods:
@@ -73,8 +77,6 @@ class Timer:
     self.writing = False
     fracs = {k: metrics[f'{k}/frac'] for k in self.paths}
     fracs = sorted(fracs.items(), key=lambda x: -x[1])
-    # metrics['summary'] = '\n'.join(
-    #     f'- {100*v:.0f}% {k} ({", ".join(self.threads[k])})' for k, v in fracs)
     metrics['summary'] = '\n'.join(f'- {100*v:.0f}% {k}' for k, v in fracs)
     reset and self.reset()
     return metrics
@@ -88,7 +90,6 @@ class Timer:
     self.mins.clear()
     self.maxs.clear()
     self.counts.clear()
-    # self.threads.clear()
     self.start = time.perf_counter_ns()
     self.writing = False
 
@@ -98,3 +99,4 @@ section = global_timer.section
 wrap = global_timer.wrap
 stats = global_timer.stats
 reset = global_timer.reset
+extensions = global_timer.extensions

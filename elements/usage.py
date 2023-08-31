@@ -8,7 +8,6 @@ import tracemalloc
 from collections import defaultdict
 
 from . import agg
-from . import printing
 from . import timer
 
 
@@ -21,7 +20,6 @@ class Usage:
         'gputil': GputilStats,  # per process
         'malloc': MallocStats,  # per process
         'gc': GcStats,          # per process
-        'gil': GilStats,        # per process
     }
     self.tools = {}
     for name, enabled in kwargs.items():
@@ -238,37 +236,3 @@ class MallocStats:
       size = size / (1024 ** 2)
       lines.append(f'- {size:.2f}Mb ({count}) {filename}:{lineno}')
     return '\n'.join(lines)
-
-
-class GilStats:
-
-  def __init__(self):
-    try:
-      import gil_load
-      self.gil_load = gil_load
-      self.gil_load.init()
-      self.gil_load.start()
-    except ImportError:
-      self.gil_load = None
-      print('For GIL statistics: pip install gil_load')
-    except RuntimeError:
-      self.gil_load = None
-      print('For GIL statistics: python -m gil_load train.py ...')
-
-  def __call__(self, log=True):
-    stats = {}
-    if self.gil_load:
-      names = {x.ident: x.name for x in list(threading.enumerate())}
-      items = self.gil_load.get()[1].items()
-      items = [(names.get(k, str(k)), v) for k, v in items]
-      items = [(k, (v['held_1m'], v['wait_1m'])) for k, v in items]
-      items = sorted(items, key=lambda x: -x[1][0])
-      stats.update({f'held/{k}': v[0] for k, v in items})
-      stats.update({f'wait/{k}': v[1] for k, v in items})
-      if log:
-        printing.print_('-' * 79)
-        for name, (held, wait) in items:
-          line = f'{name:<25} {100*held:5.1f}% held, {100*wait:5.1f}% wait'
-          printing.print_(line)
-        printing.print_('-' * 79)
-    return stats
