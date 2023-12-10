@@ -1,7 +1,9 @@
 colored
-gil_load
+gputil
 matplotlib
 mlflow
+psutil
 pytest
+ruamel.yaml
 tensorflow-cpu
 wandb

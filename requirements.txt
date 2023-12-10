@@ -1,4 +1,1 @@
-gputil
 numpy
-psutil
-ruamel.yaml

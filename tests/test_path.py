@@ -1,12 +1,7 @@
-import pathlib
-import sys
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
-
 import elements
 
 
-class TestDriver:
+class TestPath:
 
   def test_str_canonical(self):
     examples = ['/', 'foo/bar', 'file.txt', '/bar.tar.gz']

@@ -50,7 +50,7 @@ class NvsmiStats:
 
   @timer.section('nvsmi_stats')
   def __call__(self):
-    output = os.popen('nvidia-smi --query -d UTILIZATION').read()
+    output = os.popen('nvidia-smi --query -d UTILIZATION 2>&1').read()
     if not output:
       print('To log GPU stats, make sure nvidia-smi is working.')
       return {}

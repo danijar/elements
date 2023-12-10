@@ -1,78 +1,143 @@
+import math
+import operator
 from collections import defaultdict
+from functools import partial as bind
 
 import numpy as np
 
 
 class Agg:
 
-  def __init__(self, maxlen=int(1e6)):
-    self.maxlen = maxlen
-    self.avgs = defaultdict(lambda: [0.0, 0.0])
-    self.sums = defaultdict(float)
-    self.mins = defaultdict(float)
-    self.maxs = defaultdict(float)
-    self.lasts = defaultdict(lambda: None)
-    self.stacks = defaultdict(list)
+  def __init__(self, maxlen=1e6):
+    self.reducers = defaultdict(list)
+    self.names = {}
+    self.maxlen = int(maxlen)
 
-  def add(
-      self, key_or_dict, value=None, agg='default', prefix=None, nan='keep'):
-    aggs = (agg,) if isinstance(agg, str) else agg
-    assert nan in ('keep', 'ignore')
-    if value is None:
-      for key, value in dict(key_or_dict).items():
-        key = f'{prefix}/{key}' if prefix else key
-        self._add_single(key, value, aggs, nan)
-    else:
-      assert not prefix, prefix
-      self._add_single(key_or_dict, value, aggs, nan)
+  def add(self, key_or_dict, value=None, agg='default', prefix=None):
+    if value is not None:
+      self._add_single(key_or_dict, value, agg, prefix)
+      return
+    for key, value in key_or_dict.items():
+      self._add_single(key, value, agg, prefix)
 
   def result(self, reset=True, prefix=None):
     metrics = {}
-    metrics.update({k: v[0] / v[1] for k, v in self.avgs.items()})
-    metrics.update(self.sums)
-    metrics.update(self.mins.items())
-    metrics.update(self.maxs.items())
-    metrics.update(self.lasts.items())
-    metrics.update({k: np.stack(v) for k, v in self.stacks.items()})
+    for key, reducers in self.reducers.items():
+      if len(reducers) == 1:
+        metrics[key] = reducers[0].current()
+      else:
+        for name, reducer in zip(self.names[key], reducers):
+          metrics[f'{key}/{name}'] = reducer.current()
     if prefix:
       metrics = {f'{prefix}/{k}': v for k, v in metrics.items()}
     reset and self.reset()
     return metrics
 
   def reset(self):
-    self.avgs.clear()
-    self.sums.clear()
-    self.mins.clear()
-    self.maxs.clear()
-    self.lasts.clear()
-    self.stacks.clear()
+    self.reducers.clear()
 
-  def _add_single(self, key, value, aggs, nan):
-    value = np.asarray(value)
-    if nan == 'ignore' and np.isnan(value):
+  def _add_single(self, key, value, agg, prefix):
+    key = f'{prefix}/{key}' if prefix else key
+    reducers = self.reducers[key]
+    if reducers:
+      for reducer in reducers:
+        reducer.update(value)
       return
+    if agg == 'default':
+      agg = 'avg' if np.asarray(value).ndim <= 1 else 'last'
+    if isinstance(agg, str):
+      aggs = (agg,)
+      self.names[key] = None
+    else:
+      aggs = agg
+      self.names[key] = aggs
     for agg in aggs:
-      name = key if len(aggs) == 1 else f'{key}/{agg}'
-      if agg == 'default':
-        agg = 'avg' if len(value.shape) <= 1 else 'last'
       if agg == 'avg':
-        avg = self.avgs[name]
-        avg[0] += value
-        avg[1] += 1
-        # assert not np.shares_memory(self.avgs[name][0], value)
+        reducer = Mean(value)
       elif agg == 'sum':
-        self.sums[name] += value
+        reducer = Sum(value)
       elif agg == 'min':
-        self.mins[name] = min(self.mins[name], value)
-        # assert not np.shares_memory(self.mins[name], value)
+        reducer = Min(value)
       elif agg == 'max':
-        self.maxs[name] = max(self.maxs[name], value)
-        # assert not np.shares_memory(self.mins[name], value)
-      elif agg == 'last':
-        self.lasts[name] = value
+        reducer = Max(value)
       elif agg == 'stack':
-        stack = self.stacks[name]
-        if len(stack) < self.maxlen:
-          stack.append(value)
+        reducer = Stack(value, self.maxlen)
+      elif agg == 'last':
+        reducer = Last(value)
       else:
-        raise KeyError(agg)
+        raise ValueError(agg)
+      reducers.append(reducer)
+
+
+class Reducer:
+
+  def __init__(self, scalar_fn, array_fn, initial):
+    self.scalar_fn = scalar_fn
+    self.array_fn = array_fn
+    self.is_scalar = isinstance(initial, (int, float))
+    if self.is_scalar:
+      self.interm = initial
+    else:
+      self.interm = np.array(initial, np.float64)
+    self.count = 1
+
+  def update(self, value):
+    if self.is_scalar:
+      if math.isnan(value):
+        return
+      self.interm = self.scalar_fn(self.interm, value)
+    else:
+      value = np.asarray(value)
+      if np.isnan(value).any():
+        return
+      self.interm = self.array_fn(self.interm, value)
+    self.count += 1
+
+  def current(self):
+    return np.array(self.interm)
+
+
+class Mean:
+
+  def __init__(self, initial):
+    self.reducer = Sum(initial)
+
+  def update(self, value):
+    self.reducer.update(value)
+
+  def current(self):
+    return self.reducer.current() / self.reducer.count
+
+
+class Stack:
+
+  def __init__(self, initial, maxlen=1e5):
+    self.stack = [initial]
+    self.maxlen = int(maxlen)
+
+  def update(self, value):
+    if len(self.stack) < self.maxlen:
+      self.stack.append(value)
+
+  def current(self):
+    return np.stack(self.stack)
+
+
+class Last:
+
+  def __init__(self, initial):
+    self.value = initial
+
+  def update(self, value):
+    self.value = value
+
+  def current(self):
+    return self.value
+
+
+Sum = bind(
+    Reducer, operator.add, lambda x, y: np.add(x, y, out=x, dtype=np.float64))
+Min = bind(
+    Reducer, min, lambda x, y: np.minimum(x, y, out=x, dtype=np.float64))
+Max = bind(
+    Reducer, max, lambda x, y: np.maximum(x, y, out=x, dtype=np.float64))

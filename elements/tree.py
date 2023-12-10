@@ -20,6 +20,11 @@ def map_(fn, *trees, isleaf=None):
     assert all(set(x.keys()) == set(first.keys()) for x in trees), (
         printing.format_(trees))
     return {k: map_(fn, *[t[k] for t in trees], **kw) for k in first}
+  if hasattr(first, 'keys') and hasattr(first, 'get'):
+    assert all(set(x.keys()) == set(first.keys()) for x in trees), (
+        printing.format_(trees))
+    return type(first)(
+        {k: map_(fn, *[t[k] for t in trees], **kw) for k in first})
   return fn(*trees)
 
 

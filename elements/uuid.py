@@ -5,10 +5,17 @@ import numpy as np
 
 
 class UUID:
+  """UUID that is stored as 16 byte string and can be converted to and from
+  int, string, and array types."""
+
+  __slots__ = ('value', '_hash')
 
   DEBUG_ID = None
   BASE62 = string.digits + string.ascii_letters
   BASE62REV = {x: i for i, x in enumerate(BASE62)}
+
+  # def __new__(cls, val=None):
+  #   return val or np.random.randint(1, 2 ** 63)
 
   @classmethod
   def reset(cls, *, debug):
@@ -21,10 +28,13 @@ class UUID:
       else:
         type(self).DEBUG_ID += 1
         self.value = self.DEBUG_ID.to_bytes(16, 'big')
-    elif isinstance(value, type(self)):
+    elif isinstance(value, UUID):
       self.value = value.value
     elif isinstance(value, int):
       self.value = value.to_bytes(16, 'big')
+    elif isinstance(value, bytes):
+      assert len(value) == 16, value
+      self.value = value
     elif isinstance(value, str):
       if self.DEBUG_ID is None:
         integer = 0
@@ -37,7 +47,7 @@ class UUID:
       self.value = value.tobytes()
     else:
       raise ValueError(value)
-    assert type(self.value) == bytes, type(self.value)
+    assert type(self.value) == bytes, type(self.value)  # noqa
     assert len(self.value) == 16, len(self.value)
     self._hash = hash(self.value)
 

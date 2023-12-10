@@ -1,8 +1,3 @@
-import sys
-import pathlib
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent))
-
 import elements
 import pytest
 
@@ -34,7 +29,7 @@ class TestBasics:
     assert flags.parse(['--bar.*', 'False']).bar.baz is False
     with pytest.raises(TypeError):
       flags.parse(['--bar.baz', '12'])
-    with pytest.raises(ValueError):
+    with pytest.raises(KeyError):
       flags.parse(['--.*unknown.*', '12'])
     _, remaining = flags.parse_known(['one=two', '--foo', '42', '--three'])
     assert remaining == ['one=two', '--three']

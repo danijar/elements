@@ -13,7 +13,7 @@ class Flags:
     parsed, remaining = self.parse_known(argv)
     for flag in remaining:
       if flag.startswith('--'):
-        raise ValueError(f"Flag '{flag}' did not match any config keys.")
+        raise KeyError(f"Flag '{flag}' did not match any config keys.")
     assert not remaining, remaining
     return parsed
 
@@ -78,7 +78,9 @@ class Flags:
       if len(value) == 1 and ',' in value[0]:
         value = value[0].split(',')
       return tuple(self._parse_flag_value(default[0], [x], key) for x in value)
-    assert len(value) == 1, value
+    if len(value) != 1:
+      raise TypeError(
+          f"Expected a single value for key '{key}' but got: {value}")
     value = str(value[0])
     if default is None:
       return value
@@ -92,11 +94,16 @@ class Flags:
       try:
         value = float(value)  # Allow scientific notation for integers.
         assert float(int(value)) == value
-      except (TypeError, AssertionError):
+      except (ValueError, TypeError, AssertionError):
         message = f"Expected int but got float '{value}' for key '{key}'."
         raise TypeError(message)
       return int(value)
     if isinstance(default, dict):
-      raise TypeError(
+      raise KeyError(
           f"Key '{key}' refers to a whole dict. Please speicfy a subkey.")
-    return type(default)(value)
+    try:
+      return type(default)(value)
+    except ValueError:
+      raise TypeError(
+          f"Cannot convert '{value}' to type '{type(default).__name__}' for "
+          f"key '{key}'.")

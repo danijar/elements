@@ -1,8 +1,10 @@
 import concurrent.futures
-import json
+import pickle
 import time
 
+from . import printing
 from . import path
+from . import timer
 
 
 class Checkpoint:
@@ -12,7 +14,7 @@ class Checkpoint:
     self._values = {}
     self._parallel = parallel
     if self._parallel:
-      self._worker = concurrent.futures.ThreadPoolExecutor(1)
+      self._worker = concurrent.futures.ThreadPoolExecutor(1, 'checkpoint')
       self._promise = None
 
   def __setattr__(self, name, value):
@@ -31,7 +33,7 @@ class Checkpoint:
     if name.startswith('_'):
       raise AttributeError(name)
     try:
-      return getattr(self._values, name)
+      return self._values[name]
     except AttributeError:
       raise ValueError(name)
 
@@ -48,33 +50,39 @@ class Checkpoint:
   def save(self, filename=None, keys=None):
     assert self._filename or filename
     filename = path.Path(filename or self._filename)
-    print(f'Writing checkpoint: {filename}')
+    printing.print_(f'Writing checkpoint: {filename}')
     if self._parallel:
       self._promise and self._promise.result()
       self._promise = self._worker.submit(self._save, filename, keys)
     else:
       self._save(filename, keys)
 
+  @timer.section('checkpoint_save')
   def _save(self, filename, keys):
     keys = tuple(self._values.keys() if keys is None else keys)
     assert all([not k.startswith('_') for k in keys]), keys
     data = {k: self._values[k].save() for k in keys}
     data['_timestamp'] = time.time()
     filename.parent.mkdirs()
-    # Write to a temporary file and then atomically rename, so that the
-    # requested filename either contains a full checkpoint or does not exist if
-    # writing was interrupted.
-    tmp = filename.parent / (filename.name + '.tmp')
-    tmp.write(json.dumps(data), mode='wb')
-    tmp.move(filename)
-    print(f'Wrote checkpoint: {filename}')
+    content = pickle.dumps(data)
+    if str(filename).startswith('gs://'):
+      filename.write(content, mode='wb')
+    else:
+      # Write to a temporary file and then atomically rename, so that the file
+      # either contains a complete write or not update at all if writing was
+      # interrupted.
+      tmp = filename.parent / (filename.name + '.tmp')
+      tmp.write(content, mode='wb')
+      tmp.move(filename)
+    print('Wrote checkpoint.')
 
+  @timer.section('checkpoint_load')
   def load(self, filename=None, keys=None):
     assert self._filename or filename
     self._promise and self._promise.result()  # Wait for last save.
     filename = path.Path(filename or self._filename)
-    print(f'Loading checkpoint: {filename}')
-    data = json.loads(filename.read('rb'))
+    printing.print_(f'Loading checkpoint: {filename}')
+    data = pickle.loads(filename.read('rb'))
     keys = tuple(data.keys() if keys is None else keys)
     for key in keys:
       if key.startswith('_'):
@@ -82,10 +90,10 @@ class Checkpoint:
       try:
         self._values[key].load(data[key])
       except Exception:
-        print(f'Error loading {key} from checkpoint.')
+        print(f"Error loading '{key}' from checkpoint.")
         raise
     age = time.time() - data['_timestamp']
-    print(f'Loaded checkpoint from {age:.0f} seconds ago.')
+    printing.print_(f'Loaded checkpoint from {age:.0f} seconds ago.')
 
   def load_or_save(self):
     if self.exists():
