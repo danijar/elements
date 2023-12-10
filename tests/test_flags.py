@@ -60,13 +60,13 @@ class TestFlags:
     with pytest.raises(TypeError):
       assert flags.parse(['--foo=1,2,0.5'])
 
-  # def test_append(self):
-  #   flags = elements.Flags({'foo': [1, 2]})
-  #   assert flags.parse(['--foo+=3']).foo == (1, 2, 3)
-  #   assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
-  #   assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
-  #   assert flags.parse(['--foo=1,2', '--foo+=3', '--foo+=4']).foo == (
-  #       1, 2, 3, 4)
+  def test_append(self):
+    flags = elements.Flags({'foo': [1, 2]})
+    assert flags.parse(['--foo+=3']).foo == (1, 2, 3)
+    assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
+    assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
+    assert flags.parse(['--foo=1', '--foo+=2', '--foo+=3']).foo == (1, 2, 3)
+    assert flags.parse(['--foo+=3', '--foo+=4']).foo == (1, 2, 3, 4)
 
   def test_nested(self):
     flags = elements.Flags({'foo.bar': 12})
@@ -98,6 +98,17 @@ class TestFlags:
     assert flags.parse([]) == defaults
     assert flags.parse(['--bar', '2.5', '--foo=1']) == (
         defaults.update(foo=1, bar=2.5))
+    with pytest.raises(ValueError):
+      flags.parse(['--bar', '--foo=1'])
+
+  def test_invalid(self):
+    flags = elements.Flags(foo=12)
+    with pytest.raises(KeyError):
+      flags.parse(['--bar=1'])
+    with pytest.raises(ValueError):
+      flags.parse(['foo=1'])
+    with pytest.raises(ValueError):
+      flags.parse(['1', '--foo=5'])
 
   def test_from_yaml(self, tmpdir):
     filename = elements.Path(tmpdir) / 'defaults.yaml'

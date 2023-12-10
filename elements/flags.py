@@ -14,7 +14,9 @@ class Flags:
     for flag in remaining:
       if flag.startswith('--'):
         raise KeyError(f"Flag '{flag}' did not match any config keys.")
-    assert not remaining, remaining
+    if remaining:
+      raise ValueError(
+          f'Could not parse all arguments. Remaining: {remaining}')
     return parsed
 
   def parse_known(self, argv=None, help_exits=False):
@@ -57,20 +59,28 @@ class Flags:
     if '=' in name:
       remaining.extend([key] + vals)
       return
-    if self._config.IS_PATTERN.fullmatch(name):
-      pattern = re.compile(name)
-      keys = {k for k in self._config.flat if pattern.fullmatch(k)}
-    elif name in self._config:
-      keys = [name]
-    else:
-      keys = []
-    if not keys:
-      remaining.extend([key] + vals)
-      return
     if not vals:
       raise ValueError(f"Flag '{key}' was not followed by any values.")
-    for key in keys:
+    if name.endswith('+') and name[:-1] in self._config:
+      key = name[:-1]
+      default = self._config[key]
+      if not isinstance(default, tuple):
+        raise TypeError(
+            f"Cannot append to key '{key}' which is of type "
+            f"'{type(default).__name__}' instead of tuple.")
+      if key not in parsed:
+        parsed[key] = default
+      parsed[key] += self._parse_flag_value(default, vals, key)
+    elif self._config.IS_PATTERN.fullmatch(name):
+      pattern = re.compile(name)
+      keys = [k for k in self._config.flat if pattern.fullmatch(k)]
+      for key in keys:
+        parsed[key] = self._parse_flag_value(self._config[key], vals, key)
+    elif name in self._config:
+      key = name
       parsed[key] = self._parse_flag_value(self._config[key], vals, key)
+    else:
+      remaining.extend([key] + vals)
 
   def _parse_flag_value(self, default, value, key):
     value = value if isinstance(value, (tuple, list)) else (value,)
@@ -95,7 +105,7 @@ class Flags:
         value = float(value)  # Allow scientific notation for integers.
         assert float(int(value)) == value
       except (ValueError, TypeError, AssertionError):
-        message = f"Expected int but got float '{value}' for key '{key}'."
+        message = f"Expected int but got '{value}' for key '{key}'."
         raise TypeError(message)
       return int(value)
     if isinstance(default, dict):
