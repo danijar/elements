@@ -12,7 +12,7 @@ class Flags:
   def parse(self, argv=None, help_exits=True):
     parsed, remaining = self.parse_known(argv)
     for flag in remaining:
-      if flag.startswith('--'):
+      if flag.startswith('--') and flag[2:] not in self._config.flat:
         raise KeyError(f"Flag '{flag}' did not match any config keys.")
     if remaining:
       raise ValueError(
@@ -54,13 +54,17 @@ class Flags:
       return
     if not key:
       vals = ', '.join(f"'{x}'" for x in vals)
-      raise ValueError(f"Values {vals} were not preceded by any flag.")
+      remaining.extend(vals)
+      return
+      # raise ValueError(f"Values {vals} were not preceded by any flag.")
     name = key[len('--'):]
     if '=' in name:
       remaining.extend([key] + vals)
       return
     if not vals:
-      raise ValueError(f"Flag '{key}' was not followed by any values.")
+      remaining.extend([key])
+      return
+      # raise ValueError(f"Flag '{key}' was not followed by any values.")
     if name.endswith('+') and name[:-1] in self._config:
       key = name[:-1]
       default = self._config[key]
@@ -74,8 +78,11 @@ class Flags:
     elif self._config.IS_PATTERN.fullmatch(name):
       pattern = re.compile(name)
       keys = [k for k in self._config.flat if pattern.fullmatch(k)]
-      for key in keys:
-        parsed[key] = self._parse_flag_value(self._config[key], vals, key)
+      if keys:
+        for key in keys:
+          parsed[key] = self._parse_flag_value(self._config[key], vals, key)
+      else:
+        remaining.extend([key] + vals)
     elif name in self._config:
       key = name
       parsed[key] = self._parse_flag_value(self._config[key], vals, key)

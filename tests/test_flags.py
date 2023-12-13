@@ -64,7 +64,8 @@ class TestFlags:
     flags = elements.Flags({'foo': [1, 2]})
     assert flags.parse(['--foo+=3']).foo == (1, 2, 3)
     assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
-    assert flags.parse(['--foo+', '3']).foo == (1, 2, 3)
+    with pytest.raises(TypeError):
+      assert flags.parse(['--foo+', '0.5'])
     assert flags.parse(['--foo=1', '--foo+=2', '--foo+=3']).foo == (1, 2, 3)
     assert flags.parse(['--foo+=3', '--foo+=4']).foo == (1, 2, 3, 4)
 
