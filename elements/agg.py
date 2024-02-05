@@ -38,6 +38,7 @@ class Agg:
 
   def _add_single(self, key, value, agg, prefix):
     key = f'{prefix}/{key}' if prefix else key
+    value = value if isinstance(value, str) else np.asarray(value)
     reducers = self.reducers[key]
     if reducers:
       for reducer in reducers:
