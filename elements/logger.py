@@ -253,9 +253,9 @@ class TensorBoardOutput(AsyncOutput):
             value = value[:1024]
           tf.summary.histogram(name, value, step)
         elif len(value.shape) == 2:
-          tf.summary.image(name, value, step)
+          tf.summary.image(name, value[None, ..., None], step)
         elif len(value.shape) == 3:
-          tf.summary.image(name, value, step)
+          tf.summary.image(name, value[None], step)
         elif len(value.shape) == 4 and self._videos:
           self._video_summary(name, value, step)
       except Exception:
