@@ -1,4 +1,4 @@
-__version__ = '3.1.2'
+__version__ = '3.2.0'
 
 from .agg import Agg
 from .checkpoint import Checkpoint
@@ -14,6 +14,7 @@ from .rwlock import RWLock
 from .timer import Timer
 from .usage import Usage
 from .uuid import UUID
+from .utils import timestamp
 
 from . import logger
 from . import plotting
