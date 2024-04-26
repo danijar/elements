@@ -217,14 +217,14 @@ print(cp.model)
 ### `elements.Timer`
 
 Collect timing statistics about the run time of different parts of a program.
-Measures code inside scopes and can wrap methods into scopes. Returns execution
-count, execution time, fraction of overall program time, and more. The
-resulting statisticse can be added to the logger.
+Measures code inside sections and can wrap methods into sections. Returns
+execution count, execution time, fraction of overall program time, and more.
+The resulting statisticse can be added to the logger.
 
 ```python
 timer = Timer()
 
-timer.scope('foo'):
+timer.section('foo'):
   time.sleep(10)
 
 timer.wrap('name', obj, ['method1', 'method2'])
