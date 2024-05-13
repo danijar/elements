@@ -1,1 +1,5 @@
+colored
+gcsfs
 numpy
+psutil
+ruamel.yaml

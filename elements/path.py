@@ -166,7 +166,62 @@ class LocalPath(Path):
     shutil.move(self, dest)
 
 
-class GFilePath(Path):
+class GCSPath(Path):
+
+  __slots__ = ('_path',)
+
+  fs = None
+
+  def __init__(self, path):
+    path = str(path)
+    if not (path.startswith('/') or '://' in path):
+      path = os.path.abspath(os.path.expanduser(path))
+    super().__init__(path)
+    if not type(self).fs:
+      import gcsfs
+      type(self).fs = gcsfs.GCSFileSystem()
+
+  @contextlib.contextmanager
+  def open(self, mode='r'):
+    yield self.fs.open(str(self), mode)
+
+  def absolute(self):
+    return self
+
+  def glob(self, pattern):
+    path = str(self)
+    protocol = path.split('://', 1)[0] + '://' if '://' in path else ''
+    for path in self.fs.glob(f'{str(self)}/{pattern}'):
+      yield type(self)(protocol + path)
+
+  def exists(self):
+    return self.fs.exists(str(self))
+
+  def isfile(self):
+    return self.fs.isfile(str(self))
+
+  def isdir(self):
+    return self.fs.isdir(str(self))
+
+  def mkdirs(self):
+    self.fs.makedirs(str(self), exist_ok=True)
+
+  def remove(self):
+    self.fs.rm(str(self), recursive=False)
+
+  def rmtree(self):
+    self.fs.rm(str(self), recursive=True)
+
+  def copy(self, dest):
+    dest = Path(dest)
+    self.fs.copy(str(self), str(dest), recursive=True)
+
+  def move(self, dest):
+    dest = Path(dest)
+    self.fs.mv(self, str(dest), recursive=True)
+
+
+class TFPath(Path):
 
   __slots__ = ('_path',)
 
@@ -220,7 +275,7 @@ class GFilePath(Path):
     self.gfile.rmtree(str(self))
 
   def copy(self, dest):
-    dest = type(self)(dest)
+    dest = Path(dest)
     if self.isfile():
       self.gfile.copy(str(self), str(dest), overwrite=True)
     else:
@@ -232,12 +287,11 @@ class GFilePath(Path):
 
   def move(self, dest):
     dest = Path(dest)
-    if dest.isdir():
-      dest.rmtree()
     self.gfile.rename(self, str(dest), overwrite=True)
 
 
 Path.filesystems = [
-    (GFilePath, lambda path: path.startswith('gs://')),
+    (GCSPath, lambda path: path.startswith('gs://')),
+    (TFPath, lambda path: path.startswith('/cns/')),
     (LocalPath, lambda path: True),
 ]

@@ -1,9 +1,6 @@
-colored
 gputil
 matplotlib
 mlflow
-psutil
 pytest
-ruamel.yaml
 tensorflow-cpu
 wandb
