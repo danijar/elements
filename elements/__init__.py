@@ -1,7 +1,7 @@
-__version__ = '3.4.1'
+__version__ = '3.5.0'
 
 from .agg import Agg
-from .checkpoint import Checkpoint
+from .checkpoint import Checkpoint, Saveable
 from .config import Config
 from .counter import Counter
 from .flags import Flags

@@ -7,15 +7,41 @@ from . import path
 from . import timer
 
 
+class Saveable:
+
+  """Helper for creating the `save() -> data` and `load(data)` methods that
+  make an object saveable."""
+
+  def __init__(self, attrs=None, save=None, load=None):
+    assert bool(save) == bool(load)
+    assert bool(save) != bool(attrs)
+    self._save = save
+    self._load = load
+    self._attrs = attrs
+
+  def save(self):
+    if self._save:
+      return self._save()
+    if self._attrs:
+      return {k: getattr(self, k) for k in self._attrs}
+
+  def load(self, data):
+    if self._load:
+      return self._load(data)
+    if self._attrs:
+      for key in self._attrs:
+        setattr(self, key, data[key])
+
+
 class Checkpoint:
 
   def __init__(self, filename=None, parallel=True):
     self._filename = filename and path.Path(filename)
     self._values = {}
     self._parallel = parallel
+    self._promise = None
     if self._parallel:
       self._worker = concurrent.futures.ThreadPoolExecutor(1, 'checkpoint')
-      self._promise = None
 
   def __setattr__(self, name, value):
     if name in ('exists', 'save', 'load'):
@@ -51,17 +77,17 @@ class Checkpoint:
     assert self._filename or filename
     filename = path.Path(filename or self._filename)
     printing.print_(f'Writing checkpoint: {filename}')
-    if self._parallel:
-      self._promise and self._promise.result()
-      self._promise = self._worker.submit(self._save, filename, keys)
-    else:
-      self._save(filename, keys)
-
-  @timer.section('checkpoint_save')
-  def _save(self, filename, keys):
     keys = tuple(self._values.keys() if keys is None else keys)
     assert all([not k.startswith('_') for k in keys]), keys
     data = {k: self._values[k].save() for k in keys}
+    if self._parallel:
+      self._promise and self._promise.result()
+      self._promise = self._worker.submit(self._save, filename, data)
+    else:
+      self._save(filename, data)
+
+  @timer.section('checkpoint_save')
+  def _save(self, filename, data):
     data['_timestamp'] = time.time()
     filename.parent.mkdirs()
     content = pickle.dumps(data)
