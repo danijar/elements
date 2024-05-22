@@ -1,4 +1,5 @@
 import elements
+import pytest
 
 
 class TestPath:
@@ -30,11 +31,6 @@ class TestPath:
     assert str(elements.Path('./')) == '.'
     assert str(elements.Path('a/')) == 'a'
     assert str(elements.Path('foo/bar/')) == 'foo/bar'
-
-  # @pytest.mark.filterwarnings('ignore::DeprecationWarning')
-  # def test_protocols(self):
-  #   assert str(elements.Path('gs://')) == ('gs://')
-  #   assert str(elements.Path('gs://foo/bar')) == 'gs://foo/bar'
 
   def test_parent(self):
     empty = elements.Path('.')

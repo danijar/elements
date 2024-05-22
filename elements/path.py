@@ -1,4 +1,5 @@
 import contextlib
+import fnmatch
 import glob as globlib
 import os
 import re
@@ -105,16 +106,13 @@ class Path:
   def mkdirs(self):
     raise NotImplementedError
 
-  def remove(self):
+  def remove(self, recursive=False):
     raise NotImplementedError
 
-  def rmtree(self):
+  def copy(self, dest, recursive=False):
     raise NotImplementedError
 
-  def copy(self, dest):
-    raise NotImplementedError
-
-  def move(self, dest):
+  def move(self, dest, recursive=False):
     self.copy(dest)
     self.remove()
 
@@ -150,75 +148,20 @@ class LocalPath(Path):
   def mkdirs(self):
     os.makedirs(str(self), exist_ok=True)
 
-  def remove(self):
-    os.rmdir(str(self)) if self.isdir() else os.remove(str(self))
-
-  def rmtree(self):
-    shutil.rmtree(self)
-
-  def copy(self, dest):
-    if self.isfile():
-      shutil.copy(self, type(self)(dest))
+  def remove(self, recursive=False):
+    if recursive:
+      shutil.rmtree(self)
     else:
+      os.rmdir(str(self)) if self.isdir() else os.remove(str(self))
+
+  def copy(self, dest, recursive=False):
+    if recursive:
       shutil.copytree(self, type(self)(dest), dirs_exist_ok=True)
+    else:
+      shutil.copy(self, type(self)(dest))
 
-  def move(self, dest):
+  def move(self, dest, recursive=False):
     shutil.move(self, dest)
-
-
-class GCSPath(Path):
-
-  __slots__ = ('_path',)
-
-  fs = None
-
-  def __init__(self, path):
-    path = str(path)
-    if not (path.startswith('/') or '://' in path):
-      path = os.path.abspath(os.path.expanduser(path))
-    super().__init__(path)
-    if not type(self).fs:
-      import gcsfs
-      type(self).fs = gcsfs.GCSFileSystem()
-
-  @contextlib.contextmanager
-  def open(self, mode='r'):
-    yield self.fs.open(str(self), mode)
-
-  def absolute(self):
-    return self
-
-  def glob(self, pattern):
-    path = str(self)
-    protocol = path.split('://', 1)[0] + '://' if '://' in path else ''
-    for path in self.fs.glob(f'{str(self)}/{pattern}'):
-      yield type(self)(protocol + path)
-
-  def exists(self):
-    return self.fs.exists(str(self))
-
-  def isfile(self):
-    return self.fs.isfile(str(self))
-
-  def isdir(self):
-    return self.fs.isdir(str(self))
-
-  def mkdirs(self):
-    self.fs.makedirs(str(self), exist_ok=True)
-
-  def remove(self):
-    self.fs.rm(str(self), recursive=False)
-
-  def rmtree(self):
-    self.fs.rm(str(self), recursive=True)
-
-  def copy(self, dest):
-    dest = Path(dest)
-    self.fs.copy(str(self), str(dest), recursive=True)
-
-  def move(self, dest):
-    dest = Path(dest)
-    self.fs.mv(self, str(dest), recursive=True)
 
 
 class TFPath(Path):
@@ -268,26 +211,221 @@ class TFPath(Path):
   def mkdirs(self):
     self.gfile.makedirs(str(self))
 
-  def remove(self):
-    self.gfile.remove(str(self))
-
-  def rmtree(self):
-    self.gfile.rmtree(str(self))
-
-  def copy(self, dest):
-    dest = Path(dest)
-    if self.isfile():
-      self.gfile.copy(str(self), str(dest), overwrite=True)
+  def remove(self, recursive=False):
+    if recursive:
+      self.gfile.rmtree(str(self))
     else:
-      for folder, subdirs, files in self.gfile.walk(str(self)):
-        target = type(self)(folder.replace(str(self), str(dest)))
-        target.exists() or target.mkdirs()
-        for file in files:
-          (type(self)(folder) / file).copy(target / file)
+      self.gfile.remove(str(self))
 
-  def move(self, dest):
+  def copy(self, dest, recursive=False):
     dest = Path(dest)
-    self.gfile.rename(self, str(dest), overwrite=True)
+    if not recursive:
+      self.gfile.copy(str(self), str(dest), overwrite=True)
+      return
+    for folder, subdirs, files in self.gfile.walk(str(self)):
+      target = type(self)(folder.replace(str(self), str(dest)))
+      target.exists() or target.mkdirs()
+      for file in files:
+        (type(self)(folder) / file).copy(target / file)
+
+  def move(self, dest, recursive=False):
+    dest = Path(dest)
+    if recursive:
+      self.gfile.rename(self, str(dest), overwrite=True)
+      return
+    for folder, subdirs, files in self.gfile.walk(str(self)):
+      target = type(self)(folder.replace(str(self), str(dest)))
+      target.exists() or target.mkdirs()
+      for file in files:
+        (type(self)(folder) / file).move(target / file)
+
+
+class GCSPath(Path):
+
+  __slots__ = ('_path', '_blob')
+
+  client = None
+  buckets = {}
+
+  def __init__(self, path):
+    path = str(path)
+    super().__init__(path)
+    if not type(self).client:
+      from google import auth
+      from google.cloud import storage
+      credentials, project = auth.default()
+      type(self).client = storage.Client(project, credentials)
+    self._blob = None
+
+  @property
+  def blob(self):
+    if not self._blob:
+      from google.cloud import storage
+      path = str(self)[5:]
+      name = path.split('/', 1)[1] if '/' in path[5:] else None
+      self._blob = name and storage.Blob(name, self.bucket)
+    return self._blob
+
+  @property
+  def bucket(self):
+    import google
+    bucket = str(self)[5:].split('/', 1)[0]
+    if bucket not in type(self).buckets:
+      try:
+        type(self).buckets[bucket] = self.client.get_bucket(bucket)
+      except google.api_core.exceptions.NotFound:
+        return None
+    return type(self).buckets[bucket]
+
+  @contextlib.contextmanager
+  def open(self, mode='r'):
+    assert self.blob, 'is a directory'
+    yield self.blob.open(mode, chunk_size=1024 * 1024, ignore_flush=True)
+
+  def read(self, mode='r'):
+    assert self.blob, 'is a directory'
+    if mode == 'rb':
+      return self.blob.download_as_bytes(self.client)
+    elif mode == 'r':
+      return self.blob.download_as_text(self.client)
+    else:
+      raise NotImplementedError(mode)
+
+  def write(self, content, mode='w'):
+    assert mode in 'w a wb ab'.split(), mode
+    if mode == 'a':
+      prefix = self.read('r')
+      content = prefix + content
+    if mode == 'ab':
+      prefix = self.read('rb')
+      content = prefix + content
+    self.blob.upload_from_string(content)
+
+  def absolute(self):
+    return self
+
+  def glob(self, pattern):
+    prefix = self.blob.name + '/' if self.blob else ''
+    assert prefix == '' or prefix.endswith('/'), prefix
+    assert len(pattern) >= 1, pattern
+    if '**' in pattern:
+      # We have to expand to maximum depth anyways. We have to search one depth
+      # deeper to find files which prefixes should be returned as folders.
+      pattern2 = prefix + pattern
+      pattern2 += '' if pattern2.endswith('*') else '*'
+      response = self.bucket.list_blobs(prefix=prefix, match_glob=pattern2)
+      filenames = [x.name for x in response]
+      folders = [x.split('/', 1)[0] for x in filenames if '/' in filenames]
+      folders = list(set(folders))
+    else:
+      # Glob for files and iteratively look for folders.
+      pattern2 = prefix + pattern
+      response = self.bucket.list_blobs(prefix=prefix, match_glob=pattern2)
+      filenames = [x.name for x in response]
+      parts = pattern.rstrip('/').split('/')
+      queue = [(prefix, 0)]
+      folders = []
+      while queue:
+        root, depth = queue.pop(0)
+        part = parts[depth]
+        if not any(x in part for x in '*[]{}'):  # Workaround for naive glob.
+          response = self.bucket.list_blobs(prefix=root + part, delimiter='/')
+        else:
+          response = self.bucket.list_blobs(
+              prefix=root, match_glob=root + part + '/', delimiter='/')
+        results = list(response)  # Fetch all pages.
+        results = list(response.prefixes)
+        for child in results:
+          if depth < len(parts) - 1:
+            queue.append((child, depth + 1))
+          else:
+            folders.append(child)
+    results = [x.rstrip('/') for x in folders + filenames]
+    results = sorted(fnmatch.filter(results, prefix + pattern.rstrip('/')))
+    return [type(self)(f'gs://{self.bucket.name}/{x}') for x in results]
+
+  def exists(self):
+    if not self.bucket:
+      return False
+    return self.isfile() or self.isdir()
+
+  def isfile(self):
+    if not self.bucket or not self.blob:
+      return False
+    return self.blob.exists(self.client)
+
+  def isdir(self):
+    from google.cloud import storage
+    if not self.bucket:
+      return False
+    if not self.blob:
+      return self.bucket.exists()
+    if self.isfile():
+      return False
+    if storage.Blob(self.blob.name + '/', self.bucket).exists():
+      return True
+    try:
+      next(iter(self.glob('*')))
+      return True
+    except StopIteration:
+      return False
+
+  def mkdirs(self):
+    from google.cloud import storage
+    if not self.blob:
+      return
+    if self.exists():
+      return
+    folder = storage.Blob(self.blob.name + '/', self.bucket)
+    folder.upload_from_string(b'')
+
+  def remove(self, recursive=False):
+    if recursive:
+      for child in self.glob('**'):
+        child.remove()
+    else:
+      self.blob.delete(self.client)
+
+  def move(self, dest, recursive=False):
+    dest = Path(dest)
+    notgcs = not str(dest).startswith('gs://')
+    if recursive:
+      notgcs and dest.mkdirs()
+      for child in self.glob('**'):
+        name = str(child).removeprefix(str(self) + '/')
+        if child.isdir():
+          notgcs and dest.mkdirs()
+        else:
+          child.move(dest / name)
+    elif self._bucket(dest) == self.bucket.name:
+      dest = type(self)(dest)
+      self.bucket.rename_blob(self.blob, dest.blob.name)
+    else:
+      self.copy(dest)
+      self.remove()
+
+  def copy(self, dest, recursive=False):
+    dest = Path(dest)
+    notgcs = not str(dest).startswith('gs://')
+    if recursive:
+      notgcs and dest.mkdirs()
+      for child in self.glob('**'):
+        name = str(child).removeprefix(str(self) + '/')
+        if child.isdir():
+          notgcs and dest.mkdirs()
+        else:
+          child.copy(dest / name)
+    elif str(dest).startswith('gs://'):
+      dest = type(self)(dest)
+      self.bucket.copy_blob(self.blob, dest.bucket, dest.blob.name)
+    else:
+      data = self.read('rb')
+      Path(dest).write(data, 'wb')
+
+  def _bucket(self, path):
+    if not str(path).startswith('gs://'):
+      return None
+    return type(self)(path).bucket.name
 
 
 Path.filesystems = [
