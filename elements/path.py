@@ -133,7 +133,7 @@ class LocalPath(Path):
     return type(self)(os.path.absolute(str(self)))
 
   def glob(self, pattern):
-    for path in globlib.glob(f'{str(self)}/{pattern}'):
+    for path in globlib.glob(f'{str(self)}/{pattern}', recursive=True):
       yield type(self)(path)
 
   def exists(self):
