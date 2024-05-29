@@ -1,4 +1,4 @@
-__version__ = '3.6.5'
+__version__ = '3.7.0'
 
 from .agg import Agg
 from .checkpoint import Checkpoint, Saveable

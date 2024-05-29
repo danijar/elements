@@ -107,14 +107,18 @@ class Path:
     raise NotImplementedError
 
   def remove(self, recursive=False):
-    raise NotImplementedError
+    if recursive:
+      for path in reversed(list(self.glob('**'))):
+        path.remove()
+    else:
+      raise NotImplementedError
 
   def copy(self, dest, recursive=False):
-    raise NotImplementedError
+    _copy_across_filesystems(self, dest, recursive)
 
   def move(self, dest, recursive=False):
-    self.copy(dest)
-    self.remove()
+    self.copy(dest, recursive)
+    self.remove(recursive)
 
 
 class LocalPath(Path):
@@ -152,16 +156,26 @@ class LocalPath(Path):
     if recursive:
       shutil.rmtree(self)
     else:
-      os.rmdir(str(self)) if self.isdir() else os.remove(str(self))
+      if self.isdir():
+        os.rmdir(str(self))
+      else:
+        os.remove(str(self))
 
   def copy(self, dest, recursive=False):
-    if recursive:
-      shutil.copytree(self, type(self)(dest), dirs_exist_ok=True)
+    dest = Path(dest)
+    if isinstance(dest, type(self)):
+      shutil.copy2(self, type(self)(dest))
     else:
-      shutil.copy(self, type(self)(dest))
+      _copy_across_filesystems(self, dest, recursive)
 
   def move(self, dest, recursive=False):
-    shutil.move(self, dest)
+    dest = Path(dest)
+    print('TODO', type(self), type(dest))
+    if isinstance(dest, type(self)):
+      shutil.move(self, dest)
+    else:
+      _copy_across_filesystems(self, dest, recursive)
+      self.remove(recursive)
 
 
 class TFPath(Path):
@@ -219,25 +233,18 @@ class TFPath(Path):
 
   def copy(self, dest, recursive=False):
     dest = Path(dest)
-    if not recursive:
+    if isinstance(dest, type(self)) and not recursive:
       self.gfile.copy(str(self), str(dest), overwrite=True)
-      return
-    for folder, subdirs, files in self.gfile.walk(str(self)):
-      target = type(self)(folder.replace(str(self), str(dest)))
-      target.exists() or target.mkdirs()
-      for file in files:
-        (type(self)(folder) / file).copy(target / file)
+    else:
+      _copy_across_filesystems(self, dest, recursive)
 
   def move(self, dest, recursive=False):
     dest = Path(dest)
-    if recursive:
+    if isinstance(dest, type(self)) and not recursive:
       self.gfile.rename(self, str(dest), overwrite=True)
-      return
-    for folder, subdirs, files in self.gfile.walk(str(self)):
-      target = type(self)(folder.replace(str(self), str(dest)))
-      target.exists() or target.mkdirs()
-      for file in files:
-        (type(self)(folder) / file).move(target / file)
+    else:
+      _copy_across_filesystems(self, dest, recursive)
+      self.remove()
 
 
 class GCSPath(Path):
@@ -386,46 +393,45 @@ class GCSPath(Path):
     else:
       self.blob.delete(self.client)
 
-  def move(self, dest, recursive=False):
-    dest = Path(dest)
-    notgcs = not str(dest).startswith('gs://')
-    if recursive:
-      notgcs and dest.mkdirs()
-      for child in self.glob('**'):
-        name = str(child).removeprefix(str(self) + '/')
-        if child.isdir():
-          notgcs and dest.mkdirs()
-        else:
-          child.move(dest / name)
-    elif self._bucket(dest) == self.bucket.name:
-      dest = type(self)(dest)
-      self.bucket.rename_blob(self.blob, dest.blob.name)
-    else:
-      self.copy(dest)
-      self.remove()
-
   def copy(self, dest, recursive=False):
     dest = Path(dest)
-    notgcs = not str(dest).startswith('gs://')
-    if recursive:
-      notgcs and dest.mkdirs()
-      for child in self.glob('**'):
-        name = str(child).removeprefix(str(self) + '/')
-        if child.isdir():
-          notgcs and dest.mkdirs()
-        else:
-          child.copy(dest / name)
-    elif str(dest).startswith('gs://'):
-      dest = type(self)(dest)
+    if isinstance(dest, type(self)) and not recursive:
       self.bucket.copy_blob(self.blob, dest.bucket, dest.blob.name)
     else:
-      data = self.read('rb')
-      Path(dest).write(data, 'wb')
+      _copy_across_filesystems(self, dest, recursive)
+
+  def move(self, dest, recursive=False):
+    dest = Path(dest)
+    if isinstance(dest, type(self)) and not recursive:
+      if self.bucket.name == dest.bucket.name:
+        self.bucket.rename_blob(self.blob, dest.blob.name)
+      else:
+        self.bucket.copy_blob(self.blob, dest.bucket, dest.blob.name)
+    else:
+      _copy_across_filesystems(self, dest, recursive)
+      self.remove()
 
   def _bucket(self, path):
     if not str(path).startswith('gs://'):
       return None
     return type(self)(path).bucket.name
+
+
+def _copy_across_filesystems(source, dest, recursive):
+  assert isinstance(source, Path), type(source)
+  assert isinstance(dest, Path), type(dest)
+  if not recursive:
+    assert source.isfile()
+    dest.write(source.read('rb'), 'wb')
+    return
+  prefix = str(source)
+  for s in source.glob('**'):
+    assert str(s).startswith(prefix), (source, s)
+    d = dest / str(s)[len(prefix):].lstrip('/')
+    if s.isdir():
+      d.mkdirs()
+    else:
+      d.write(s.read('rb'), 'wb')
 
 
 Path.filesystems = [
