@@ -322,7 +322,7 @@ class GCSPath(Path):
       pattern2 += '' if pattern2.endswith('*') else '*'
       response = self.bucket.list_blobs(prefix=prefix, match_glob=pattern2)
       filenames = [x.name for x in response]
-      folders = [x.split('/', 1)[0] for x in filenames if '/' in filenames]
+      folders = [x.rsplit('/', 1)[0] for x in filenames if '/' in x]
       folders = list(set(folders))
     else:
       # Glob for files and iteratively look for folders.
@@ -424,6 +424,9 @@ def _copy_across_filesystems(source, dest, recursive):
     assert source.isfile()
     dest.write(source.read('rb'), 'wb')
     return
+  if dest.exists():
+    dest = dest / source.name
+  dest.mkdirs()
   prefix = str(source)
   for s in source.glob('**'):
     assert str(s).startswith(prefix), (source, s)
