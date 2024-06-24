@@ -212,7 +212,7 @@ class TensorBoardOutput(AsyncOutput):
   def __init__(
       self, logdir, fps=20, videos=True, maxsize=1e9, parallel=True):
     super().__init__(self._write, parallel)
-    self._logdir = str(logdir)
+    self._logdir = str(path.Path(logdir))
     if self._logdir.startswith('/gcs/'):
       self._logdir = self._logdir.replace('/gcs/', 'gs://')
     self._fps = fps
