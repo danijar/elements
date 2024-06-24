@@ -200,8 +200,9 @@ class TFPath(Path):
     path = str(self)
     if 'a' in mode and path.startswith('/cns/'):
       path += '%r=3.2'
-    if mode.startswith('x') and self.exists():
-      raise FileExistsError(path)
+    if mode.startswith('x'):
+      if self.exists():
+        raise FileExistsError(path)
       mode = mode.replace('x', 'w')
     with self.gfile.GFile(path, mode) as f:
       yield f
