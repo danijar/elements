@@ -193,8 +193,9 @@ class GcStats:
 
 class MallocStats:
 
-  def __init__(self):
+  def __init__(self, root_module):
     tracemalloc.start()
+    self.root_module = root_module
     self.previous = None
 
   @timer.section('malloc_stats')
@@ -207,7 +208,7 @@ class MallocStats:
     log and print(stats['full'])
     return stats
 
-  def _summary(self, snapshot, relative=None, top=50, root='embodied'):
+  def _summary(self, snapshot, relative=None, top=50):
     if relative:
       statistics = snapshot.compare_to(relative, 'traceback')
     else:
@@ -216,6 +217,7 @@ class MallocStats:
     for stat in statistics:
       filename = stat.traceback[-1].filename
       lineno = stat.traceback[-1].lineno
+      root = self.root_module
       for frame in reversed(stat.traceback):
         if f'/{root}/' in frame.filename:
           filename = f'{root}/' + frame.filename.split(f'/{root}/')[-1]

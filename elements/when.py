@@ -68,19 +68,20 @@ class Until:
 
 class Clock:
 
-  def __init__(self, every):
+  def __init__(self, every, first=True):
     self._every = every
     self._prev = None
+    self._first = first
 
   def __call__(self, step=None):
     if self._every < 0:
-      return True
-    if self._every == 0:
       return False
+    if self._every == 0:
+      return True
     now = time.time()
     if self._prev is None:
       self._prev = now
-      return True
+      return self._first
     if now >= self._prev + self._every:
       # self._prev += self._every
       self._prev = now

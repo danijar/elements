@@ -3,12 +3,11 @@ import concurrent.futures
 import json
 import os
 import re
-import time
 
 import numpy as np
 
-from . import printing
 from . import path
+from . import printing
 from . import timer
 
 
@@ -68,15 +67,12 @@ class Logger:
     self.add({name: value})
 
   @timer.section('logger_write')
-  def write(self, fps=False):
-    if fps:
-      value = self._compute_fps()
-      if value is not None:
-        self.scalar('fps', value)
+  def write(self):
     if not self._metrics:
       return
     for output in self.outputs:
-      output(tuple(self._metrics))
+      with timer.section(type(output).__name__):
+        output(tuple(self._metrics))
     self._metrics.clear()
 
   def close(self):
@@ -88,18 +84,6 @@ class Logger:
         except Exception as e:
           print(f'Error waiting on output: {e}')
 
-  def _compute_fps(self):
-    step = int(self.step) * self.multiplier
-    if self._last_step is None:
-      self._last_time = time.time()
-      self._last_step = step
-      return None
-    steps = step - self._last_step
-    duration = time.time() - self._last_time
-    self._last_time += duration
-    self._last_step = step
-    return steps / duration
-
 
 class AsyncOutput:
 
@@ -107,7 +91,9 @@ class AsyncOutput:
     self._callback = callback
     self._parallel = parallel
     if parallel:
-      self._worker = concurrent.futures.ThreadPoolExecutor(1, 'logger_async')
+      name = type(self).__name__
+      self._worker = concurrent.futures.ThreadPoolExecutor(
+          1, f'logger_{name}_async')
       self._future = None
 
   def wait(self):
@@ -144,19 +130,20 @@ class TerminalOutput:
         scalars = dict(list(scalars.items())[:self._limit])
     formatted = {k: self._format_value(v) for k, v in scalars.items()}
     if self._name:
-      header = f'{"-"*20}[{self._name} Step {step}]{"-"*20}'
+      header = f'{"-" * 20}[{self._name} Step {step}]{"-" * 20}'
     else:
-      header = f'{"-"*20}[Step {step}]{"-"*20}'
-    if formatted:
-      content = ' / '.join(f'{k} {v}' for k, v in formatted.items())
-    else:
-      content = 'No metrics.'
+      header = f'{"-" * 20}[Step {step}]{"-" * 20}'
+    content = ''
     if self._pattern:
-      content += f"\n(Filtered by '{self._pattern.pattern}')"
+      content += f"Metrics filtered by: '{self._pattern.pattern}'"
     elif truncated:
-      content += f'\n({truncated} more entries truncated;'
-      content += ' filter to see specific keys.)'
-    printing.print_(f'{header}\n{content}', flush=True)
+      content += f'{truncated} metrics truncated, filter to see specific keys.'
+    content += '\n'
+    if formatted:
+      content += ' / '.join(f'{k} {v}' for k, v in formatted.items())
+    else:
+      content += 'No metrics.'
+    printing.print_(f'\n{header}\n{content}\n', flush=True)
 
   def _format_value(self, value):
     value = float(value)
@@ -291,16 +278,10 @@ class TensorBoardOutput(AsyncOutput):
 
 class WandBOutput:
 
-  def __init__(self, name, config=None, pattern=r'.*'):
+  def __init__(self, name, pattern=r'.*', **kwargs):
     self._pattern = re.compile(pattern)
     import wandb
-    wandb.init(
-        project='embodied',
-        name=name,
-        # sync_tensorboard=True,
-        entity='word-bots',
-        config=config and dict(config),
-    )
+    wandb.init(name=name, **kwargs)
     self._wandb = wandb
 
   def __call__(self, summaries):
