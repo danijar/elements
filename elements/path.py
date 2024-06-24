@@ -103,7 +103,7 @@ class Path:
   def isdir(self):
     raise NotImplementedError
 
-  def mkdirs(self):
+  def mkdir(self):
     raise NotImplementedError
 
   def remove(self, recursive=False):
@@ -149,7 +149,7 @@ class LocalPath(Path):
   def isdir(self):
     return os.path.isdir(str(self))
 
-  def mkdirs(self):
+  def mkdir(self):
     os.makedirs(str(self), exist_ok=True)
 
   def remove(self, recursive=False):
@@ -222,7 +222,7 @@ class TFPath(Path):
   def isdir(self):
     return self.gfile.isdir(str(self))
 
-  def mkdirs(self):
+  def mkdir(self):
     self.gfile.makedirs(str(self))
 
   def remove(self, recursive=False):
@@ -377,7 +377,7 @@ class GCSPath(Path):
     except StopIteration:
       return False
 
-  def mkdirs(self):
+  def mkdir(self):
     from google.cloud import storage
     if not self.blob:
       return
@@ -426,13 +426,13 @@ def _copy_across_filesystems(source, dest, recursive):
     return
   if dest.exists():
     dest = dest / source.name
-  dest.mkdirs()
+  dest.mkdir()
   prefix = str(source)
   for s in source.glob('**'):
     assert str(s).startswith(prefix), (source, s)
     d = dest / str(s)[len(prefix):].lstrip('/')
     if s.isdir():
-      d.mkdirs()
+      d.mkdir()
     else:
       d.write(s.read('rb'), 'wb')
 

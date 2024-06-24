@@ -172,7 +172,7 @@ path.isdir()                          # False
 path.isfile()                         # True
 
 # File system changes
-(path.parent / 'foo').mkdirs()        # Creates directory including parents
+(path.parent / 'foo').mkdir()         # Creates directory including parents
 path.remove()                         # Deletes a file or empty directory
 path.parent.rmtree()                  # Deletes directory and its content
 path.copy(path.parent / 'copy.txt')   # Makes a copy

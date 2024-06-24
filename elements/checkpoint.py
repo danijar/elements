@@ -89,7 +89,7 @@ class Checkpoint:
   @timer.section('checkpoint_save')
   def _save(self, filename, data):
     data['_timestamp'] = time.time()
-    filename.parent.mkdirs()
+    filename.parent.mkdir()
     content = pickle.dumps(data)
     if str(filename).startswith('gs://'):
       filename.write(content, mode='wb')

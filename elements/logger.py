@@ -186,7 +186,7 @@ class JSONLOutput(AsyncOutput):
     self._pattern = re.compile(pattern)
     self._strings = strings
     logdir = path.Path(logdir)
-    logdir.mkdirs()
+    logdir.mkdir()
     self._filename = logdir / filename
 
   @timer.section('jsonl')
