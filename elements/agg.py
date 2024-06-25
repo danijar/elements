@@ -38,14 +38,23 @@ class Agg:
 
   def _add_single(self, key, value, agg, prefix):
     key = f'{prefix}/{key}' if prefix else key
-    value = value if isinstance(value, str) else np.asarray(value)
     reducers = self.reducers[key]
     if reducers:
       for reducer in reducers:
         reducer.update(value)
       return
     if agg == 'default':
-      agg = 'avg' if np.asarray(value).ndim <= 1 else 'last'
+      ndim = np.asarray(value).ndim
+      if np.issubdtype(np.asarray(value).dtype, str):
+        agg = 'last'
+      elif ndim == 0:
+        agg = 'avg'
+      elif ndim == 1:  # distribution
+        agg = 'concat'
+      elif ndim == 4:  # video
+        agg = 'concat'
+      else:
+        agg = 'last'
     if isinstance(agg, str):
       aggs = (agg,)
       self.names[key] = None
@@ -63,6 +72,8 @@ class Agg:
         reducer = Max(value)
       elif agg == 'stack':
         reducer = Stack(value, self.maxlen)
+      elif agg == 'concat':
+        reducer = Concat(value, self.maxlen)
       elif agg == 'last':
         reducer = Last(value)
       else:
@@ -73,29 +84,35 @@ class Agg:
 class Reducer:
 
   def __init__(self, scalar_fn, array_fn, initial):
-    self.scalar_fn = scalar_fn
-    self.array_fn = array_fn
     self.is_scalar = isinstance(initial, (int, float))
-    if self.is_scalar:
-      self.interm = initial
-    else:
-      self.interm = np.array(initial, np.float64)
+    self.fn = scalar_fn if self.is_scalar else array_fn
+    self.interm = self._input(initial)
     self.count = 1
 
   def update(self, value):
-    if self.is_scalar:
-      if math.isnan(value):
-        return
-      self.interm = self.scalar_fn(self.interm, value)
-    else:
-      value = np.asarray(value)
-      if np.isnan(value).any():
-        return
-      self.interm = self.array_fn(self.interm, value)
+    value = self._input(value)
+    if self._isnan(value):
+      return
+    if self._isnan(self.interm):
+      self.interm = value
+      return
+    self.interm = self.fn(self.interm, value)
     self.count += 1
 
   def current(self):
     return np.array(self.interm)
+
+  def _input(self, value):
+    if self.is_scalar:
+      return value
+    else:
+      return np.asarray(value, np.float64)
+
+  def _isnan(self, value):
+    if self.is_scalar:
+      return math.isnan(value)
+    else:
+      return np.isnan(value).any()
 
 
 class Mean:
@@ -122,6 +139,22 @@ class Stack:
 
   def current(self):
     return np.stack(self.stack)
+
+
+class Concat:
+
+  def __init__(self, initial, maxlen=1e5):
+    self.values = [initial]
+    self.len = len(self.values[-1])
+    self.maxlen = int(maxlen)
+
+  def update(self, value):
+    if self.len < self.maxlen:
+      self.values.append(value[:self.maxlen - self.len])
+      self.len += len(self.values[-1])
+
+  def current(self):
+    return np.concatenate(self.values)
 
 
 class Last:
