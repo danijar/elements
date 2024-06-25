@@ -170,7 +170,6 @@ class LocalPath(Path):
 
   def move(self, dest, recursive=False):
     dest = Path(dest)
-    print('TODO', type(self), type(dest))
     if isinstance(dest, type(self)):
       shutil.move(self, dest)
     else:
