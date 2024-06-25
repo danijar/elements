@@ -1,4 +1,4 @@
-__version__ = '3.8.5'
+__version__ = '3.9.0'
 
 from .agg import Agg
 from .checkpoint import Checkpoint, Saveable
@@ -11,10 +11,11 @@ from .path import Path
 from .printing import format_ as format
 from .printing import print_ as print
 from .rwlock import RWLock
+from .space import Space
 from .timer import Timer
 from .usage import Usage
-from .uuid import UUID
 from .utils import timestamp
+from .uuid import UUID
 
 from . import logger
 from . import plotting
