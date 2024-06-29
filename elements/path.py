@@ -84,7 +84,6 @@ class Path:
     with self.open(mode) as f:
       f.write(content)
 
-  @contextlib.contextmanager
   def open(self, mode='r'):
     raise NotImplementedError
 
@@ -128,10 +127,8 @@ class LocalPath(Path):
   def __init__(self, path):
     super().__init__(os.path.expanduser(str(path)))
 
-  @contextlib.contextmanager
   def open(self, mode='r'):
-    with open(str(self), mode=mode) as f:
-      yield f
+    return open(str(self), mode=mode)
 
   def absolute(self):
     return type(self)(os.path.absolute(str(self)))
@@ -194,7 +191,6 @@ class TFPath(Path):
       tf.config.set_visible_devices([], 'TPU')
       type(self).gfile = tf.io.gfile
 
-  @contextlib.contextmanager
   def open(self, mode='r'):
     path = str(self)
     if 'a' in mode and path.startswith('/cns/'):
@@ -203,8 +199,7 @@ class TFPath(Path):
       if self.exists():
         raise FileExistsError(path)
       mode = mode.replace('x', 'w')
-    with self.gfile.GFile(path, mode) as f:
-      yield f
+    return self.gfile.GFile(path, mode)
 
   def absolute(self):
     return self
@@ -284,10 +279,12 @@ class GCSPath(Path):
         return None
     return type(self).buckets[bucket]
 
-  @contextlib.contextmanager
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
-    yield self.blob.open(mode, chunk_size=1024 * 1024, ignore_flush=True)
+    if 'w' in mode:
+      return self.blob.open(mode, chunk_size=1024 * 1024, ignore_flush=True)
+    else:
+      return self.blob.open(mode, chunk_size=1024 * 1024)
 
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
