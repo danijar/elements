@@ -1,4 +1,3 @@
-import contextlib
 import fnmatch
 import glob as globlib
 import os
@@ -345,7 +344,8 @@ class GCSPath(Path):
           else:
             folders.append(child)
     results = [x.rstrip('/') for x in folders + filenames]
-    results = sorted(fnmatch.filter(results, prefix + pattern.rstrip('/')))
+    results = fnmatch.filter(results, prefix + pattern.rstrip('/'))
+    results = sorted(set(results))
     return [type(self)(f'gs://{self.bucket.name}/{x}') for x in results]
 
   def exists(self):
@@ -384,9 +384,14 @@ class GCSPath(Path):
     folder.upload_from_string(b'')
 
   def remove(self, recursive=False):
+    isdir = self.isdir()
     if recursive:
+      from google.cloud import storage
+      assert isdir
       for child in self.glob('**'):
         child.remove()
+    if isdir:
+      storage.Blob(self.blob.name + '/', self.bucket).delete()
     else:
       self.blob.delete(self.client)
 
