@@ -385,14 +385,15 @@ class GCSPath(Path):
 
   def remove(self, recursive=False):
     isdir = self.isdir()
+    isfile = self.isfile()
     if recursive:
       from google.cloud import storage
-      assert isdir
+      assert not isfile
       for child in self.glob('**'):
         child.remove()
     if isdir:
       storage.Blob(self.blob.name + '/', self.bucket).delete()
-    else:
+    if isfile:
       self.blob.delete(self.client)
 
   def copy(self, dest, recursive=False):
