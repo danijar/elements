@@ -282,9 +282,9 @@ class GCSPath(Path):
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
     if 'w' in mode:
-      return self.blob.open(mode, chunk_size=1024 * 1024, ignore_flush=True)
+      return self.blob.open(mode, ignore_flush=True)
     else:
-      return self.blob.open(mode, chunk_size=1024 * 1024)
+      return self.blob.open(mode)
 
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
