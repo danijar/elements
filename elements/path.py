@@ -283,7 +283,9 @@ class GCSPath(Path):
     if 'w' in mode:
       return self.blob.open(mode, ignore_flush=True)
     else:
-      return self.blob.open(mode)
+      # return self.blob.open(mode, chunk_size=256 * 1024)
+      # return self.blob.open(mode)
+      return GCSFile(self.blob, self._client)
 
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
@@ -437,11 +439,65 @@ class GCSPath(Path):
     return globals()['GCS_STATE']['buckets']
 
 
+# Per-process GCS state.
 GCS_STATE = {
     'lock': threading.Lock(),
     'client': None,
     'buckets': {},
 }
+
+
+class GCSFile:
+
+  def __init__(self, blob, client):
+    self.blob = blob
+    self.client = client
+    self.pos = 0
+    self.length = None
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *e):
+    pass
+
+  def readable(self):
+    return True
+
+  def writeable(self):
+    return False
+
+  def tell(self):
+    return self.pos
+
+  def seek(self, pos, mode=os.SEEK_SET):
+    if mode == os.SEEK_SET:
+      self.pos = pos
+    elif mode == os.SEEK_CUR:
+      self.pos += pos
+    elif mode == os.SEEK_END:
+      if self.length is None:
+        self.blob = self.blob.bucket.get_blob(self.blob.name)
+        self.length = self.blob.size
+        assert self.length is not None
+      self.pos = self.length + pos
+    else:
+      raise NotImplementedError(mode)
+    assert 0 <= self.pos, self.pos
+    assert self.length is None or self.pos <= self.length, (
+        self.pos, self.length)
+
+  def read(self, size=None):
+    if size is not None:
+      assert self.pos >= 0
+      if self.length is not None:
+        assert self.pos + size <= self.length, (self.pos, size, self.length)
+      result = self.blob.download_as_bytes(
+          self.client, start=self.pos, end=self.pos + size)
+      assert size <= len(result) < size + 8, (len(result), size)
+      return result[:size]
+    else:
+      return self.blob.download_as_bytes(self.client)
 
 
 def _copy_across_filesystems(source, dest, recursive):
