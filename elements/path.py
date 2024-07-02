@@ -3,6 +3,7 @@ import glob as globlib
 import os
 import re
 import shutil
+import threading
 
 
 class Path:
@@ -245,17 +246,16 @@ class GCSPath(Path):
 
   __slots__ = ('_path', '_blob')
 
-  client = None
-  buckets = {}
-
   def __init__(self, path):
     path = str(path)
     super().__init__(path)
-    if not type(self).client:
-      from google import auth
-      from google.cloud import storage
-      credentials, project = auth.default()
-      type(self).client = storage.Client(project, credentials)
+    self._blob = None
+
+  def __getstate__(self):
+    return {'path': self._path}
+
+  def __setstate__(self, d):
+    self._path = d['path']
     self._blob = None
 
   @property
@@ -271,12 +271,12 @@ class GCSPath(Path):
   def bucket(self):
     import google
     bucket = str(self)[5:].split('/', 1)[0]
-    if bucket not in type(self).buckets:
+    if bucket not in self._buckets:
       try:
-        type(self).buckets[bucket] = self.client.get_bucket(bucket)
+        self._buckets[bucket] = self._client.get_bucket(bucket)
       except google.api_core.exceptions.NotFound:
         return None
-    return type(self).buckets[bucket]
+    return self._buckets[bucket]
 
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
@@ -288,9 +288,9 @@ class GCSPath(Path):
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
     if mode == 'rb':
-      return self.blob.download_as_bytes(self.client)
+      return self.blob.download_as_bytes(self._client)
     elif mode == 'r':
-      return self.blob.download_as_text(self.client)
+      return self.blob.download_as_text(self._client)
     else:
       raise NotImplementedError(mode)
 
@@ -356,7 +356,7 @@ class GCSPath(Path):
   def isfile(self):
     if not self.bucket or not self.blob:
       return False
-    return self.blob.exists(self.client)
+    return self.blob.exists(self._client)
 
   def isdir(self):
     from google.cloud import storage
@@ -394,7 +394,7 @@ class GCSPath(Path):
     if isdir:
       storage.Blob(self.blob.name + '/', self.bucket).delete()
     if isfile:
-      self.blob.delete(self.client)
+      self.blob.delete(self._client)
 
   def copy(self, dest, recursive=False):
     dest = Path(dest)
@@ -418,6 +418,30 @@ class GCSPath(Path):
     if not str(path).startswith('gs://'):
       return None
     return type(self)(path).bucket.name
+
+  @property
+  def _client(self):
+    state = globals()['GCS_STATE']
+    if not state['client']:
+      with state['lock']:
+        # If no other thread has already created it.
+        if not state['client']:
+          from google import auth
+          from google.cloud import storage
+          credentials, project = auth.default()
+          state['client'] = storage.Client(project, credentials)
+    return state['client']
+
+  @property
+  def _buckets(self):
+    return globals()['GCS_STATE']['buckets']
+
+
+GCS_STATE = {
+    'lock': threading.Lock(),
+    'client': None,
+    'buckets': {},
+}
 
 
 def _copy_across_filesystems(source, dest, recursive):
