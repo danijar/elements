@@ -499,6 +499,9 @@ class GCSFile:
     else:
       return self.blob.download_as_bytes(self.client)
 
+  def close(self):
+    pass
+
 
 def _copy_across_filesystems(source, dest, recursive):
   assert isinstance(source, Path), type(source)
