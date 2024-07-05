@@ -386,10 +386,10 @@ class GCSPath(Path):
     folder.upload_from_string(b'')
 
   def remove(self, recursive=False):
+    from google.cloud import storage
     isdir = self.isdir()
     isfile = self.isfile()
     if recursive:
-      from google.cloud import storage
       assert not isfile
       for child in self.glob('**'):
         child.remove()
