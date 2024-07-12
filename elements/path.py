@@ -1,9 +1,11 @@
 import fnmatch
 import glob as globlib
+import io
 import os
 import re
 import shutil
 import threading
+import uuid
 
 
 class Path:
@@ -280,12 +282,13 @@ class GCSPath(Path):
 
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
-    if 'w' in mode:
-      return self.blob.open(mode, ignore_flush=True)
+    if 'r' in mode:
+      return GCSReadFile(self.blob, self._client)
+    elif mode == 'a':
+      return GCSAppendFile(self.blob, self._client)
     else:
-      # return self.blob.open(mode, chunk_size=256 * 1024)
-      # return self.blob.open(mode)
-      return GCSFile(self.blob, self._client)
+      # Supports writes as resumeable uploads.
+      return self.blob.open(mode, ignore_flush=True)
 
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
@@ -447,7 +450,7 @@ GCS_STATE = {
 }
 
 
-class GCSFile:
+class GCSReadFile:
 
   def __init__(self, blob, client):
     self.blob = blob
@@ -459,7 +462,7 @@ class GCSFile:
     return self
 
   def __exit__(self, *e):
-    pass
+    self.close()
 
   def readable(self):
     return True
@@ -501,6 +504,44 @@ class GCSFile:
 
   def close(self):
     pass
+
+
+class GCSAppendFile:
+
+  def __init__(self, blob, client, mode='a'):
+    self.client = client
+    self.target = blob
+    self.temp = blob.bucket.get_blob(f'tmp/{uuid.uuid4()}')
+    self.fp = self.temp.open(mode.replace('a', 'w'))
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, *e):
+    self.close()
+
+  def readable(self):
+    return False
+
+  def writeable(self):
+    return True
+
+  def tell(self):
+    raise io.UnsupportedOperation
+
+  def seek(self, pos, mode=os.SEEK_SET):
+    raise io.UnsupportedOperation
+
+  def read(self, size=None):
+    raise io.UnsupportedOperation
+
+  def write(self, b):
+    self.temp.write(b)
+
+  def close(self):
+    self.temp.close()
+    self.target.compose([self.target, self.temp])
+    self.temp.delete()
 
 
 def _copy_across_filesystems(source, dest, recursive):
