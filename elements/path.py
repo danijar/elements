@@ -509,9 +509,10 @@ class GCSReadFile:
 class GCSAppendFile:
 
   def __init__(self, blob, client, mode='a'):
+    from google.cloud import storage
     self.client = client
     self.target = blob
-    self.temp = blob.bucket.get_blob(f'tmp/{uuid.uuid4()}')
+    self.temp = storage.Blob(str(uuid.uuid4()), blob.bucket)
     self.fp = self.temp.open(mode.replace('a', 'w'))
 
   def __enter__(self):
@@ -536,10 +537,12 @@ class GCSAppendFile:
     raise io.UnsupportedOperation
 
   def write(self, b):
-    self.temp.write(b)
+    self.fp.write(b)
 
   def close(self):
-    self.temp.close()
+    self.fp.close()
+    if not self.target.exists():
+      self.target.upload_from_string(b'')
     self.target.compose([self.target, self.temp])
     self.temp.delete()
 
