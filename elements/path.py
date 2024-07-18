@@ -497,7 +497,8 @@ class GCSReadFile:
         assert self.pos + size <= self.length, (self.pos, size, self.length)
       result = self.blob.download_as_bytes(
           self.client, start=self.pos, end=self.pos + size)
-      assert size <= len(result) < size + 8, (len(result), size)
+      assert size <= len(result) < size + 8, (
+          self.blob.name, self.pos, size, len(result))
       return result[:size]
     else:
       return self.blob.download_as_bytes(self.client)
