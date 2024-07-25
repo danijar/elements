@@ -426,28 +426,24 @@ class GCSPath(Path):
 
   @property
   def _client(self):
-    state = globals()['GCS_STATE']
-    if not state['client']:
-      with state['lock']:
-        # If no other thread has already created it.
-        if not state['client']:
-          from google import auth
-          from google.cloud import storage
-          credentials, project = auth.default()
-          state['client'] = storage.Client(project, credentials)
-    return state['client']
+    clients = globals()['GCS_CLIENTS']
+    ident = threading.get_ident()
+    if ident not in clients:
+      from google import auth
+      from google.cloud import storage
+      credentials, project = auth.default()
+      clients[ident] = storage.Client(project, credentials)
+    return clients[ident]
 
   @property
   def _buckets(self):
-    return globals()['GCS_STATE']['buckets']
+    ident = threading.get_ident()
+    return globals()['GCS_BUCKETS'].setdefault(ident, {})
 
 
-# Per-process GCS state.
-GCS_STATE = {
-    'lock': threading.Lock(),
-    'client': None,
-    'buckets': {},
-}
+# Per-thread GCS state
+GCS_CLIENTS = {}
+GCS_BUCKETS = {}
 
 
 class GCSReadFile:
