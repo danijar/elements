@@ -39,3 +39,27 @@ def flatten(tree, isleaf=None):
 def unflatten(leaves, structure):
   leaves = iter(tuple(leaves))
   return map(lambda x: next(leaves), structure)
+
+
+def expand(mapping):
+  assert isinstance(mapping, dict)
+  tree = {}
+  for path, value in mapping.items():
+    node = tree
+    parts = path.split('.')
+    for part in parts[:-1]:
+      node = node.setdefault(part, {})
+    node[parts[-1]] = value
+  return tree
+
+
+def condense(structure):
+  assert isinstance(structure, dict)
+  mapping = {}
+  for key, value in structure.items():
+    if isinstance(value, dict):
+      inner = {f'{key}.{k}': v for k, v in condense(value).items()}
+      mapping.update(inner)
+    else:
+      mapping[key] = value
+  return mapping
