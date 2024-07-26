@@ -16,11 +16,17 @@ KEYWORDS = (
     'uint8', 'float16', 'float32', 'int32', 'int64')
 
 
-def print_(*values, color=True, **kwargs):
+def print_(*values, color=True, bold=None, **kwargs):
+  values = [format_(x) for x in values]
   value = kwargs.get('sep', ' ').join(str(x) for x in values)
   assert not color or isinstance(color, (bool, str)), color
-  if isinstance(color, str) and colored:
-    value = colored.stylize(value, colored.fg(color))
+  if (isinstance(color, str) or bold) and colored:
+    args = []
+    if isinstance(color, str):
+      args.append(colored.fg(color))
+    if bold:
+      args.append(colored.style('bold'))
+    value = ''.join(args) + str(value) + colored.style('reset')
   elif color is True and colored:
     result = []
     prev = [None, None, None]  # Color, highlighted, bold
@@ -85,7 +91,7 @@ def format_(value):
     return '[' + ', '.join(f'{format_(x)}' for x in value) + ']'
   if isinstance(value, tuple):
     return '(' + ', '.join(f'{format_(x)}' for x in value) + ')'
-  if hasattr(value, 'shape') and hasattr(value, 'dtype'):
+  if all(hasattr(value, n) for n in ('shape', 'dtype', 'reshape')):
     shape = ','.join(str(x) for x in value.shape)
     dtype = value.dtype.name
     for long, short in {'float': 'f', 'uint': 'u', 'int': 'i'}.items():
