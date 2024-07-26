@@ -41,7 +41,19 @@ def unflatten(leaves, structure):
   return map(lambda x: next(leaves), structure)
 
 
-def expand(mapping, sep='/'):
+def flatdict(structure, sep='/'):
+  assert isinstance(structure, dict)
+  mapping = {}
+  for key, value in structure.items():
+    if isinstance(value, dict):
+      inner = {f'{key}{sep}{k}': v for k, v in flatdict(value).items()}
+      mapping.update(inner)
+    else:
+      mapping[key] = value
+  return mapping
+
+
+def nestdict(mapping, sep='/'):
   assert isinstance(mapping, dict)
   tree = {}
   for path, value in mapping.items():
@@ -51,15 +63,3 @@ def expand(mapping, sep='/'):
       node = node.setdefault(part, {})
     node[parts[-1]] = value
   return tree
-
-
-def condense(structure, sep='/'):
-  assert isinstance(structure, dict)
-  mapping = {}
-  for key, value in structure.items():
-    if isinstance(value, dict):
-      inner = {f'{key}{sep}{k}': v for k, v in condense(value).items()}
-      mapping.update(inner)
-    else:
-      mapping[key] = value
-  return mapping
