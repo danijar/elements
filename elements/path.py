@@ -293,9 +293,9 @@ class GCSPath(Path):
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
     if mode == 'rb':
-      return self.blob.download_as_bytes(self._client)
+      return self.blob.download_as_bytes(self._client, raw_download=True)
     elif mode == 'r':
-      return self.blob.download_as_text(self._client)
+      return self.read('r').decode('utf-8')
     else:
       raise NotImplementedError(mode)
 
@@ -451,8 +451,8 @@ class GCSReadFile:
   def __init__(self, blob, client):
     self.blob = blob
     self.client = client
+    self.fetched = False
     self.pos = 0
-    self.length = None
 
   def __enter__(self):
     return self
@@ -470,34 +470,37 @@ class GCSReadFile:
     return self.pos
 
   def seek(self, pos, mode=os.SEEK_SET):
+
+    if not self.fetched:
+      self.blob = self.blob.bucket.get_blob(self.blob.name)
+      self.fetched = True
+
     if mode == os.SEEK_SET:
       self.pos = pos
     elif mode == os.SEEK_CUR:
       self.pos += pos
     elif mode == os.SEEK_END:
-      if self.length is None:
-        self.blob = self.blob.bucket.get_blob(self.blob.name)
-        self.length = self.blob.size
-        assert self.length is not None
-      self.pos = self.length + pos
+      self.pos = self.blob.size + pos
     else:
       raise NotImplementedError(mode)
-    assert 0 <= self.pos, self.pos
-    assert self.length is None or self.pos <= self.length, (
-        self.pos, self.length)
+    assert 0 <= self.pos <= self.blob.size, (self.pos, self.blob.size)
 
   def read(self, size=None):
-    if size is not None:
-      assert self.pos >= 0
-      if self.length is not None:
-        assert self.pos + size <= self.length, (self.pos, size, self.length)
-      result = self.blob.download_as_bytes(
-          self.client, start=self.pos, end=self.pos + size)
-      assert size <= len(result) < size + 8, (
-          self.blob.name, self.pos, size, len(result))
-      return result[:size]
-    else:
-      return self.blob.download_as_bytes(self.client)
+    if size is None:
+      buffer = self.blob.download_as_bytes(
+          self.client, start=self.pos or None, raw_download=True)
+      self.pos += len(buffer)
+      return buffer
+    if not self.fetched:
+      self.blob = self.blob.bucket.get_blob(self.blob.name)
+      self.fetched = True
+    end = min(self.pos + size, self.blob.size)
+    result = self.blob.download_as_bytes(
+        self.client, start=self.pos, end=end, raw_download=True)
+    assert size <= len(result) < size + 8, (
+        self.blob.name, self.blob.size, self.pos, size, len(result))
+    self.pos = end
+    return result[:size]
 
   def close(self):
     pass

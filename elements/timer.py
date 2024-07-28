@@ -77,7 +77,7 @@ class Timer:
     self.writing = False
     fracs = {k: metrics[f'{k}/frac'] for k in self.paths}
     fracs = sorted(fracs.items(), key=lambda x: -x[1])
-    metrics['summary'] = '\n'.join(f'- {100*v:.0f}% {k}' for k, v in fracs)
+    metrics['summary'] = '\n'.join(f'- {100 * v:.0f}% {k}' for k, v in fracs)
     reset and self.reset()
     return metrics
 
