@@ -26,7 +26,6 @@ class Every:
 class Ratio:
 
   def __init__(self, ratio):
-    assert ratio >= 0, ratio
     self._ratio = ratio
     self._prev = None
 
@@ -34,6 +33,8 @@ class Ratio:
     step = int(step)
     if self._ratio == 0:
       return 0
+    if self._ratio < 0:
+      return 1
     if self._prev is None:
       self._prev = step
       return 1
