@@ -295,7 +295,7 @@ class GCSPath(Path):
     if mode == 'rb':
       return self.blob.download_as_bytes(self._client, raw_download=True)
     elif mode == 'r':
-      return self.read('r').decode('utf-8')
+      return self.read('rb').decode('utf-8')
     else:
       raise NotImplementedError(mode)
 
