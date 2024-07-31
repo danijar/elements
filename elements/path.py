@@ -515,7 +515,7 @@ class GCSAppendFile:
     from google.cloud import storage
     self.client = client
     self.target = blob
-    self.temp = storage.Blob(str(uuid.uuid4()), blob.bucket)
+    self.temp = storage.Blob('tmp/' + str(uuid.uuid4()), blob.bucket)
     self.fp = self.temp.open(mode.replace('a', 'w'))
 
   def __enter__(self):
