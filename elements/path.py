@@ -466,6 +466,9 @@ class GCSReadFile:
   def writeable(self):
     return False
 
+  def seekable(self):
+    return True
+
   def tell(self):
     return self.pos
 
@@ -526,6 +529,9 @@ class GCSAppendFile:
 
   def writeable(self):
     return True
+
+  def seekable(self):
+    return False
 
   def tell(self):
     raise io.UnsupportedOperation
