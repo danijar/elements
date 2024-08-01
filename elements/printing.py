@@ -1,10 +1,5 @@
 import re
-
-try:
-  import colored
-except ImportError:
-  colored = None
-  print('For colored outputs: pip install colored')
+import sys
 
 
 REGEX_TOKEN = re.compile(
@@ -15,31 +10,52 @@ KEYWORDS = (
     'True', 'False', 'None', 'bool', 'int', 'str', 'float',
     'uint8', 'float16', 'float32', 'int32', 'int64')
 
+escseq = lambda parts: '\033[' + ';'.join(parts) + 'm'
+colors = dict(
+    black=0, red=1, green=2, yellow=3, blue=4, magenta=5, cyan=6, white=7)
+
+
+def style(color=None, background=None, bold=None, underline=None, reset=None):
+  if not sys.stdout.isatty():
+    return ''
+  parts = []
+  if reset:
+    parts.append(escseq('0'))
+  if color or bold or underline:
+    args = ['3' + (str(colors[color]) if color else '9')]
+    bold and args.append('1')
+    underline and args.append('4')
+    parts.append(escseq(args))
+  if background:
+    parts.append(escseq('4' + str(colors[background])))
+  return ''.join(parts)
+
 
 def print_(*values, color=True, bold=None, **kwargs):
   values = [format_(x) for x in values]
   value = kwargs.get('sep', ' ').join(str(x) for x in values)
   assert not color or isinstance(color, (bool, str)), color
-  if (isinstance(color, str) or bold) and colored:
+  if (isinstance(color, str) or bold):
     args = []
-    if isinstance(color, str):
-      args.append(colored.fg(color))
-    if bold:
-      args.append(colored.style('bold'))
-    value = ''.join(args) + str(value) + colored.style('reset')
-  elif color is True and colored:
+    if isinstance(color, str) or bold:
+      args.append(style(color=color, bold=bold))
+    args.append(str(value))
+    if isinstance(color, str) or bold:
+      args.append(style(reset=True))
+    value = ''.join(args)
+  elif color is True:
     result = []
-    prev = [None, None, None]  # Color, highlighted, bold
+    prev = [None, None, None, None]  # Color, bold, underline, highlighted
     tokens = REGEX_TOKEN.split(value) + [None]
     for i, token in enumerate(tokens[:-1]):
       new = prev.copy()
       word = token.strip()
-      new[2] = None
+      new[1] = None
       if not word:
         new[0] = None
       elif word in '/-+':
         new[0] = 'green'
-        new[2] = True
+        new[1] = True
       elif word in '{}()<>,:':
         new[0] = 'white'
       elif token == '=':
@@ -49,7 +65,7 @@ def print_(*values, color=True, bold=None, **kwargs):
       elif word in KEYWORDS:
         new[0] = 'blue'
       elif word.startswith('---'):
-        new[1] = True
+        new[3] = True
       elif REGEX_NUMBER.match(word):
         new[0] = 'blue'
       elif word[0] == word[-1] == "'":
@@ -66,19 +82,22 @@ def print_(*values, color=True, bold=None, **kwargs):
         new[0] = None
       else:
         new[0] = None
-      if new[1]:
+      if new[3]:  # Highlighted
         new[0] = 'cyan'
-        new[2] = True
+        new[1] = True
+        new[2] = False
       if new != prev:
-        result.append(colored.attr('reset'))
-        new[0] and result.append(colored.fg(new[0]))
-        new[2] and result.append(colored.attr('bold'))
+        result.append(style(
+            color=new[0],
+            bold=new[1],
+            underline=new[2],
+            reset=True))
       result.append(token)
       prev = new
       if '\n' in token:
         prev[1] = None
-        prev[2] = None
-    result.append(colored.attr('reset'))
+        prev[3] = None
+    result.append(style(reset=True))
     value = ''.join(result)
   print(value, **kwargs)
 

@@ -1,0 +1,4 @@
+[tool.pytest.ini_options]
+addopts = ['--strict-config', '-ra']
+pythonpath = ['.']
+testpaths = ['tests']
