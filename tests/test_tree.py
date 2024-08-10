@@ -68,3 +68,13 @@ class TestTree:
       leaves, structure = elements.tree.flatten(tree)
       copy = elements.tree.unflatten(leaves, structure)
       assert copy == tree
+
+  def test_nestdict(self):
+    x = {'a': {'b': 1}, 'c': 2}
+    y = {'a/b': 1, 'c': 2}
+    assert elements.tree.flatdict(x) == y
+    assert elements.tree.nestdict(y) == x
+    x = {'a': {'b': (1, 2, {'c': 3})}}
+    y = {'a/b/[0]': 1, 'a/b/[1]': 2, 'a/b/[2]/c': 3}
+    assert elements.tree.flatdict(x) == y
+    assert elements.tree.nestdict(y) == x

@@ -41,13 +41,16 @@ def unflatten(leaves, structure):
   return map(lambda x: next(leaves), structure)
 
 
-def flatdict(structure, sep='/'):
-  assert isinstance(structure, dict)
+def flatdict(tree, sep='/'):
+  assert isinstance(tree, (dict, tuple)), type(tree)
   mapping = {}
-  for key, value in structure.items():
+  for key, value in tree.items():
     if isinstance(value, dict):
-      inner = {f'{key}{sep}{k}': v for k, v in flatdict(value).items()}
-      mapping.update(inner)
+      inner = flatdict(value)
+      mapping.update({f'{key}{sep}{k}': v for k, v in inner.items()})
+    elif isinstance(value, tuple):
+      inner = flatdict({f'[{i}]': x for i, x in enumerate(value)})
+      mapping.update({f'{key}{sep}{k}': v for k, v in inner.items()})
     else:
       mapping[key] = value
   return mapping
@@ -62,4 +65,13 @@ def nestdict(mapping, sep='/'):
     for part in parts[:-1]:
       node = node.setdefault(part, {})
     node[parts[-1]] = value
+  def post(tree):
+    if isinstance(tree, dict):
+      tree = {k: post(v) for k, v in tree.items()}
+      if all(k.startswith('[') and k.endswith(']') for k in tree):
+        assert [int(x[1:-1]) for x in tree.keys()] == list(range(len(tree))), (
+            sorted(tree.keys()))
+        tree = tuple(tree[f'[{i}]'] for i in range(len(tree)))
+    return tree
+  tree = post(tree)
   return tree

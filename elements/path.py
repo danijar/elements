@@ -284,8 +284,8 @@ class GCSPath(Path):
     assert self.blob, 'is a directory'
     if 'r' in mode:
       return GCSReadFile(self.blob, self._client)
-    elif mode == 'a':
-      return GCSAppendFile(self.blob, self._client)
+    elif mode in ('a', 'ab'):
+      return GCSAppendFile(self.blob, self._client, mode)
     else:
       # Supports writes as resumeable uploads.
       return self.blob.open(mode, ignore_flush=True)
