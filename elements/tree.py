@@ -69,7 +69,7 @@ def nestdict(mapping, sep='/'):
     if isinstance(tree, dict):
       tree = {k: post(v) for k, v in tree.items()}
       if all(k.startswith('[') and k.endswith(']') for k in tree):
-        assert [int(x[1:-1]) for x in tree.keys()] == list(range(len(tree))), (
+        assert set([int(x[1:-1]) for x in tree.keys()]) == set(range(len(tree))), (
             sorted(tree.keys()))
         tree = tuple(tree[f'[{i}]'] for i in range(len(tree)))
     return tree
