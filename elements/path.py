@@ -293,7 +293,8 @@ class GCSPath(Path):
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
     if mode == 'rb':
-      return self.blob.download_as_bytes(self._client, raw_download=True)
+      return self.blob.download_as_bytes(
+          self._client, raw_download=True, **self._timeout())
     elif mode == 'r':
       return self.read('rb').decode('utf-8')
     else:
@@ -307,7 +308,7 @@ class GCSPath(Path):
     if mode == 'ab':
       prefix = self.read('rb')
       content = prefix + content
-    self.blob.upload_from_string(content)
+    self.blob.upload_from_string(content, **self._timeout())
 
   def absolute(self):
     return self
@@ -440,6 +441,11 @@ class GCSPath(Path):
     ident = threading.get_ident()
     return globals()['GCS_BUCKETS'].setdefault(ident, {})
 
+  @staticmethod
+  def _timeout(duration=300):
+    from google.cloud.storage.retry import DEFAULT_RETRY
+    return dict(timeout=duration, retry=DEFAULT_RETRY.with_deadline(duration))
+
 
 # Per-thread GCS state
 GCS_CLIENTS = {}
@@ -491,7 +497,8 @@ class GCSReadFile:
   def read(self, size=None):
     if size is None:
       buffer = self.blob.download_as_bytes(
-          self.client, start=self.pos or None, raw_download=True)
+          self.client, start=self.pos or None, raw_download=True,
+          **GCSPath._timeout())
       self.pos += len(buffer)
       return buffer
     if not self.fetched:
@@ -499,7 +506,8 @@ class GCSReadFile:
       self.fetched = True
     end = min(self.pos + size, self.blob.size)
     result = self.blob.download_as_bytes(
-        self.client, start=self.pos, end=end, raw_download=True)
+        self.client, start=self.pos, end=end, raw_download=True,
+        **GCSPath._timeout())
     assert size <= len(result) < size + 8, (
         self.blob.name, self.blob.size, self.pos, size, len(result))
     self.pos = end
