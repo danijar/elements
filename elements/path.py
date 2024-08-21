@@ -86,6 +86,12 @@ class Path:
     with self.open(mode) as f:
       f.write(content)
 
+  def write_text(self, content):
+    self.write(content, mode='w')
+
+  def write_bytes(self, content):
+    self.write(content, mode='wb')
+
   def open(self, mode='r'):
     raise NotImplementedError
 
@@ -104,7 +110,10 @@ class Path:
   def isdir(self):
     raise NotImplementedError
 
-  def mkdir(self):
+  def mkdir(self, **kwargs):
+    assert kwargs.pop('parents', True)
+    assert kwargs.pop('exist_ok', True)
+    assert not kwargs, kwargs
     raise NotImplementedError
 
   def remove(self, recursive=False):
@@ -148,7 +157,10 @@ class LocalPath(Path):
   def isdir(self):
     return os.path.isdir(str(self))
 
-  def mkdir(self):
+  def mkdir(self, **kwargs):
+    assert kwargs.pop('parents', True)
+    assert kwargs.pop('exist_ok', True)
+    assert not kwargs, kwargs
     os.makedirs(str(self), exist_ok=True)
 
   def remove(self, recursive=False):
@@ -219,7 +231,10 @@ class TFPath(Path):
   def isdir(self):
     return self.gfile.isdir(str(self))
 
-  def mkdir(self):
+  def mkdir(self, **kwargs):
+    assert kwargs.pop('parents', True)
+    assert kwargs.pop('exist_ok', True)
+    assert not kwargs, kwargs
     self.gfile.makedirs(str(self))
 
   def remove(self, recursive=False):
@@ -380,7 +395,10 @@ class GCSPath(Path):
     except StopIteration:
       return False
 
-  def mkdir(self):
+  def mkdir(self, **kwargs):
+    assert kwargs.pop('parents', True)
+    assert kwargs.pop('exist_ok', True)
+    assert not kwargs, kwargs
     from google.cloud import storage
     if not self.blob:
       return
