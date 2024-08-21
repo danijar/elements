@@ -130,9 +130,9 @@ class TerminalOutput:
         scalars = dict(list(scalars.items())[:self._limit])
     formatted = {k: self._format_value(v) for k, v in scalars.items()}
     if self._name:
-      header = f'{"-" * 20}[{self._name} Step {step}]{"-" * 20}'
+      header = f'{"-" * 20}[{self._name} Step {step:_}]{"-" * 20}'
     else:
-      header = f'{"-" * 20}[Step {step}]{"-" * 20}'
+      header = f'{"-" * 20}[Step {step:_}]{"-" * 20}'
     content = ''
     if self._pattern:
       content += f"Metrics filtered by: '{self._pattern.pattern}'"
