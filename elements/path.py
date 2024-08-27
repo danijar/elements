@@ -446,7 +446,10 @@ class GCSPath(Path):
   @property
   def _client(self):
     clients = globals()['GCS_CLIENTS']
-    ident = threading.get_ident()
+    if globals()['GCS_SHARE_CLIENT']:
+      ident = -1
+    else:
+      ident = threading.get_ident()
     if ident not in clients:
       from google import auth
       from google.cloud import storage
@@ -456,7 +459,10 @@ class GCSPath(Path):
 
   @property
   def _buckets(self):
-    ident = threading.get_ident()
+    if globals()['GCS_SHARE_CLIENT']:
+      ident = 0
+    else:
+      ident = threading.get_ident()
     return globals()['GCS_BUCKETS'].setdefault(ident, {})
 
   @staticmethod
@@ -466,6 +472,7 @@ class GCSPath(Path):
 
 
 # Per-thread GCS state
+GCS_SHARE_CLIENT = False
 GCS_CLIENTS = {}
 GCS_BUCKETS = {}
 
