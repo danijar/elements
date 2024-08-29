@@ -451,10 +451,12 @@ class GCSPath(Path):
     else:
       ident = threading.get_ident()
     if ident not in clients:
-      from google import auth
-      from google.cloud import storage
-      credentials, project = auth.default()
-      clients[ident] = storage.Client(project, credentials)
+      with globals()['GCS_LOCK']:
+        if ident not in clients:
+          from google import auth
+          from google.cloud import storage
+          credentials, project = auth.default()
+          clients[ident] = storage.Client(project, credentials)
     return clients[ident]
 
   @property
@@ -472,6 +474,7 @@ class GCSPath(Path):
 
 
 # Per-thread GCS state
+GCS_LOCK = threading.Lock()
 GCS_SHARE_CLIENT = False
 GCS_CLIENTS = {}
 GCS_BUCKETS = {}
