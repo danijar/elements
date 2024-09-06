@@ -259,6 +259,16 @@ class TFPath(Path):
       self.remove()
 
 
+def gcs_retry(duration=60):
+  from google.cloud.storage.retry import DEFAULT_RETRY
+  return dict(timeout=duration, retry=DEFAULT_RETRY.with_deadline(duration))
+
+
+GCS_LOCK = threading.RLock()
+GCS_CLIENT = None
+GCS_BUCKETS = {}
+
+
 class GCSPath(Path):
 
   __slots__ = ('_path', '_blob')
@@ -286,30 +296,44 @@ class GCSPath(Path):
 
   @property
   def bucket(self):
-    import google
     bucket = str(self)[5:].split('/', 1)[0]
-    if bucket not in self._buckets:
-      try:
-        self._buckets[bucket] = self._client.get_bucket(bucket)
-      except google.api_core.exceptions.NotFound:
-        return None
-    return self._buckets[bucket]
+    if bucket not in GCS_BUCKETS:
+      with GCS_LOCK:
+        if bucket not in GCS_BUCKETS:
+          import google
+          try:
+            GCS_BUCKETS[bucket] = self.client.get_bucket(bucket, **gcs_retry())
+          except google.api_core.exceptions.NotFound:
+            return None
+    return GCS_BUCKETS[bucket]
+
+  @property
+  def client(self):
+    global GCS_CLIENT
+    if not GCS_CLIENT:
+      with GCS_LOCK:
+        if not GCS_CLIENT:
+          from google import auth
+          from google.cloud import storage
+          credentials, project = auth.default()
+          GCS_CLIENT = storage.Client(project, credentials)
+    return GCS_CLIENT
 
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
     if 'r' in mode:
-      return GCSReadFile(self.blob, self._client)
+      return GCSReadFile(self.blob, self.client)
     elif mode in ('a', 'ab'):
-      return GCSAppendFile(self.blob, self._client, mode)
+      return GCSAppendFile(self.blob, self.client, mode)
     else:
       # Supports writes as resumeable uploads.
-      return self.blob.open(mode, ignore_flush=True)
+      return self.blob.open(mode, ignore_flush=True, **gcs_retry(300))
 
   def read(self, mode='r'):
     assert self.blob, 'is a directory'
     if mode == 'rb':
       return self.blob.download_as_bytes(
-          self._client, raw_download=True, **self._timeout())
+          self.client, raw_download=True, **gcs_retry(300))
     elif mode == 'r':
       return self.read('rb').decode('utf-8')
     else:
@@ -323,7 +347,7 @@ class GCSPath(Path):
     if mode == 'ab':
       prefix = self.read('rb')
       content = prefix + content
-    self.blob.upload_from_string(content, **self._timeout())
+    self.blob.upload_from_string(content, **gcs_retry(300))
 
   def absolute(self):
     return self
@@ -377,7 +401,7 @@ class GCSPath(Path):
   def isfile(self):
     if not self.bucket or not self.blob:
       return False
-    return self.blob.exists(self._client)
+    return self.blob.exists(self.client)
 
   def isdir(self):
     from google.cloud import storage
@@ -405,7 +429,7 @@ class GCSPath(Path):
     if self.exists():
       return
     folder = storage.Blob(self.blob.name + '/', self.bucket)
-    folder.upload_from_string(b'')
+    folder.upload_from_string(b'', **gcs_retry())
 
   def remove(self, recursive=False):
     from google.cloud import storage
@@ -416,14 +440,15 @@ class GCSPath(Path):
       for child in self.glob('**'):
         child.remove()
     if isdir:
-      storage.Blob(self.blob.name + '/', self.bucket).delete()
+      storage.Blob(self.blob.name + '/', self.bucket).delete(**gcs_retry())
     if isfile:
-      self.blob.delete(self._client)
+      self.blob.delete(self.client, **gcs_retry())
 
   def copy(self, dest, recursive=False):
     dest = Path(dest)
     if isinstance(dest, type(self)) and not recursive:
-      self.bucket.copy_blob(self.blob, dest.bucket, dest.blob.name)
+      self.bucket.copy_blob(
+          self.blob, dest.bucket, dest.blob.name, **gcs_retry())
     else:
       _copy_across_filesystems(self, dest, recursive)
 
@@ -431,9 +456,10 @@ class GCSPath(Path):
     dest = Path(dest)
     if isinstance(dest, type(self)) and not recursive:
       if self.bucket.name == dest.bucket.name:
-        self.bucket.rename_blob(self.blob, dest.blob.name)
+        self.bucket.rename_blob(self.blob, dest.blob.name, **gcs_retry())
       else:
-        self.bucket.copy_blob(self.blob, dest.bucket, dest.blob.name)
+        self.bucket.copy_blob(
+            self.blob, dest.bucket, dest.blob.name, **gcs_retry())
     else:
       _copy_across_filesystems(self, dest, recursive)
       self.remove()
@@ -442,42 +468,6 @@ class GCSPath(Path):
     if not str(path).startswith('gs://'):
       return None
     return type(self)(path).bucket.name
-
-  @property
-  def _client(self):
-    clients = globals()['GCS_CLIENTS']
-    if globals()['GCS_SHARE_CLIENT']:
-      ident = -1
-    else:
-      ident = threading.get_ident()
-    if ident not in clients:
-      with globals()['GCS_LOCK']:
-        if ident not in clients:
-          from google import auth
-          from google.cloud import storage
-          credentials, project = auth.default()
-          clients[ident] = storage.Client(project, credentials)
-    return clients[ident]
-
-  @property
-  def _buckets(self):
-    if globals()['GCS_SHARE_CLIENT']:
-      ident = 0
-    else:
-      ident = threading.get_ident()
-    return globals()['GCS_BUCKETS'].setdefault(ident, {})
-
-  @staticmethod
-  def _timeout(duration=300):
-    from google.cloud.storage.retry import DEFAULT_RETRY
-    return dict(timeout=duration, retry=DEFAULT_RETRY.with_deadline(duration))
-
-
-# Per-thread GCS state
-GCS_LOCK = threading.Lock()
-GCS_SHARE_CLIENT = False
-GCS_CLIENTS = {}
-GCS_BUCKETS = {}
 
 
 class GCSReadFile:
@@ -507,11 +497,9 @@ class GCSReadFile:
     return self.pos
 
   def seek(self, pos, mode=os.SEEK_SET):
-
     if not self.fetched:
-      self.blob = self.blob.bucket.get_blob(self.blob.name)
+      self.blob = self.blob.bucket.get_blob(self.blob.name, **gcs_retry())
       self.fetched = True
-
     if mode == os.SEEK_SET:
       self.pos = pos
     elif mode == os.SEEK_CUR:
@@ -530,7 +518,7 @@ class GCSReadFile:
       self.pos += len(buffer)
       return buffer
     if not self.fetched:
-      self.blob = self.blob.bucket.get_blob(self.blob.name)
+      self.blob = self.blob.bucket.get_blob(self.blob.name, **gcs_retry())
       self.fetched = True
     end = min(self.pos + size, self.blob.size)
     result = self.blob.download_as_bytes(
@@ -552,7 +540,7 @@ class GCSAppendFile:
     self.client = client
     self.target = blob
     self.temp = storage.Blob('tmp/' + str(uuid.uuid4()), blob.bucket)
-    self.fp = self.temp.open(mode.replace('a', 'w'))
+    self.fp = self.temp.open(mode.replace('a', 'w'), **gcs_retry(300))
 
   def __enter__(self):
     return self
@@ -583,10 +571,10 @@ class GCSAppendFile:
 
   def close(self):
     self.fp.close()
-    if not self.target.exists():
-      self.target.upload_from_string(b'')
-    self.target.compose([self.target, self.temp])
-    self.temp.delete()
+    if not self.target.exists(**gcs_retry()):
+      self.target.upload_from_string(b'', **gcs_retry())
+    self.target.compose([self.target, self.temp], **gcs_retry())
+    self.temp.delete(**gcs_retry())
 
 
 def _copy_across_filesystems(source, dest, recursive):
