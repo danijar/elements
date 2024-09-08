@@ -1,5 +1,6 @@
 import collections
 import concurrent.futures
+import functools
 import json
 import os
 import re
@@ -225,33 +226,26 @@ class TensorBoardOutput(AsyncOutput):
       self._promise = self._checker.submit(self._check)
     if not self._writer or reset:
       print('Creating new TensorBoard event file writer.')
-      retries = 3
-      for retry in range(retries):
-        try:
-          self._writer = tf.summary.create_file_writer(
-              self._logdir, flush_millis=10000, max_queue=10000)
-          break
-        except Exception:
-          if retry == retries - 1:
-            raise
-          time.sleep(float(np.random.uniform(3, 10)))
+      self._writer = self._retry(functools.partial(
+          tf.summary.create_file_writer,
+          self._logdir, max_queue=int(1e9), flush_millis=int(1e9)))
     self._writer.set_as_default()
     for step, name, value in summaries:
       try:
         if isinstance(value, str):
-          tf.summary.text(name, value, step)
+          self._retry(tf.summary.text, name, value, step)
         elif len(value.shape) == 0:
-          tf.summary.scalar(name, value, step)
+          self._retry(tf.summary.scalar, name, value, step)
         elif len(value.shape) == 1:
           if len(value) > 1024:
             value = value.copy()
             np.random.shuffle(value)
             value = value[:1024]
-          tf.summary.histogram(name, value, step)
+          self._retry(tf.summary.histogram, name, value, step)
         elif len(value.shape) == 2:
-          tf.summary.image(name, value[None, ..., None], step)
+          self._retry(tf.summary.image, name, value[None, ..., None], step)
         elif len(value.shape) == 3:
-          tf.summary.image(name, value[None], step)
+          self._retry(tf.summary.image, name, value[None], step)
         elif len(value.shape) == 4 and self._videos:
           self._video_summary(name, value, step)
       except Exception:
@@ -264,6 +258,17 @@ class TensorBoardOutput(AsyncOutput):
     import tensorflow as tf
     events = tf.io.gfile.glob(self._logdir.rstrip('/') + '/events.out.*')
     return tf.io.gfile.stat(sorted(events)[-1]).length if events else 0
+
+  def _retry(self, fn, *args, attempts=3, delay=(3, 10)):
+    import tensorflow as tf
+    for retry in range(attempts):
+      try:
+        return fn(*args)
+      except tf.errors.PermissionDeniedError as e:
+        if retry >= attempts - 1:
+          raise
+        print(f'Retrying after exception: {e}')
+        delay and time.sleep(float(np.random.uniform(*delay)))
 
   @timer.section('tensorboard_video')
   def _video_summary(self, name, video, step):
@@ -279,10 +284,11 @@ class TensorBoardOutput(AsyncOutput):
       image = tf1.Summary.Image(height=H, width=W, colorspace=C)
       image.encoded_image_string = _encode_gif(video, self._fps)
       summary.value.add(tag=name, image=image)
-      tf.summary.experimental.write_raw_pb(summary.SerializeToString(), step)
+      content = summary.SerializeToString()
+      self._retry(tf.summary.experimental.write_raw_pb, content, step)
     except (IOError, OSError) as e:
       print('GIF summaries require ffmpeg in $PATH.', e)
-      tf.summary.image(name, video, step)
+      self._retry(tf.summary.image, name, video, step)
 
 
 class WandBOutput:
