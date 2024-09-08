@@ -3,6 +3,7 @@ import concurrent.futures
 import json
 import os
 import re
+import time
 
 import numpy as np
 
@@ -224,8 +225,16 @@ class TensorBoardOutput(AsyncOutput):
       self._promise = self._checker.submit(self._check)
     if not self._writer or reset:
       print('Creating new TensorBoard event file writer.')
-      self._writer = tf.summary.create_file_writer(
-          self._logdir, flush_millis=1000, max_queue=10000)
+      retries = 3
+      for retry in range(retries):
+        try:
+          self._writer = tf.summary.create_file_writer(
+              self._logdir, flush_millis=10000, max_queue=10000)
+          break
+        except Exception:
+          if retry == retries - 1:
+            raise
+          time.sleep(float(np.random.uniform(3, 10)))
     self._writer.set_as_default()
     for step, name, value in summaries:
       try:
