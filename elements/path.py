@@ -514,7 +514,7 @@ class GCSReadFile:
     if size is None:
       buffer = self.blob.download_as_bytes(
           self.client, start=self.pos or None, raw_download=True,
-          **GCSPath._timeout())
+          **gcs_retry())
       self.pos += len(buffer)
       return buffer
     if not self.fetched:
@@ -523,7 +523,7 @@ class GCSReadFile:
     end = min(self.pos + size, self.blob.size)
     result = self.blob.download_as_bytes(
         self.client, start=self.pos, end=end, raw_download=True,
-        **GCSPath._timeout())
+        **gcs_retry())
     assert size <= len(result) < size + 8, (
         self.blob.name, self.blob.size, self.pos, size, len(result))
     self.pos = end
