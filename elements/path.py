@@ -578,11 +578,15 @@ class GCSAppendFile:
     self.fp.write(b)
 
   def close(self):
+    import google.cloud.exceptions
     self.fp.close()
     if not self.target.exists(**gcs_retry()):
       self.target.upload_from_string(b'', **gcs_retry())
     self.target.compose([self.target, self.temp], **gcs_retry())
-    self.temp.delete(**gcs_retry())
+    try:
+      self.temp.delete(**gcs_retry())
+    except google.cloud.exceptions.NotFound:
+      pass
 
 
 def _copy_across_filesystems(source, dest, recursive):
