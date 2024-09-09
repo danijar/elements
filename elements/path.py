@@ -315,8 +315,16 @@ class GCSPath(Path):
         if not GCS_CLIENT:
           from google import auth
           from google.cloud import storage
+          import requests
           credentials, project = auth.default()
-          GCS_CLIENT = storage.Client(project, credentials)
+          client = storage.Client(project, credentials)
+          # https://github.com/googleapis/python-storage/issues/253
+          adapter = requests.adapters.HTTPAdapter(
+              pool_connections=64, pool_maxsize=64,
+              max_retries=3, pool_block=True)
+          client._http.mount('https://', adapter)
+          client._http._auth_request.session.mount('https://', adapter)
+          GCS_CLIENT = client
     return GCS_CLIENT
 
   def open(self, mode='r'):
