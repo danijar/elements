@@ -5,6 +5,7 @@ import os
 import re
 import shutil
 import threading
+import time
 import uuid
 
 
@@ -582,11 +583,20 @@ class GCSAppendFile:
     self.fp.close()
     if not self.target.exists(**gcs_retry()):
       self.target.upload_from_string(b'', **gcs_retry())
+    self._wait_until_exists(self.target)
+    self._wait_until_exists(self.temp)
     self.target.compose([self.target, self.temp], **gcs_retry())
     try:
       self.temp.delete(**gcs_retry())
     except google.cloud.exceptions.NotFound:
       pass
+
+  def _wait_until_exists(self, blob, timeout=60):
+    start = time.time()
+    while not blob.exists(**gcs_retry()):
+      time.sleep(0.2)
+      if time.time() - start >= timeout:
+        raise TimeoutError
 
 
 def _copy_across_filesystems(source, dest, recursive):
