@@ -329,6 +329,24 @@ class WandBOutput:
       self._wandb.log(metrics, step=step)
 
 
+class ScopeOutput(AsyncOutput):
+
+  def __init__(self, logdir, fps=20, pattern=r'.*'):
+    super().__init__(self._write, parallel=True)
+    import scope
+    logdir = path.Path(logdir)
+    self.writer = scope.Writer(logdir, fps=fps)
+    self.pattern = (pattern != r'.*') and re.compile(pattern)
+
+  @timer.section('scope')
+  def _write(self, summaries):
+    for step, name, value in summaries:
+      if self.pattern and not self.pattern.search(name):
+        continue
+      self.writer.add(step, {name: value})
+    self.writer.flush()
+
+
 class MLFlowOutput:
 
   def __init__(self, run_name=None, resume_id=None, config=None, prefix=None):
