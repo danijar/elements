@@ -82,6 +82,12 @@ class Path:
     with self.open(mode) as f:
       return f.read()
 
+  def read_text(self):
+    return self.read(mode='r')
+
+  def read_bytes(self):
+    return self.read(mode='rb')
+
   def write(self, content, mode='w'):
     assert mode in 'w a wb ab'.split(), mode
     with self.open(mode) as f:
@@ -533,7 +539,7 @@ class GCSReadFile:
     result = self.blob.download_as_bytes(
         self.client, start=self.pos, end=end, raw_download=True,
         **gcs_retry())
-    assert size <= len(result) < size + 8, (
+    assert 1 <= len(result) < size + 8, (
         self.blob.name, self.blob.size, self.pos, size, len(result))
     self.pos = end
     return result[:size]

@@ -1,3 +1,4 @@
+import threading
 import time
 
 
@@ -5,15 +6,18 @@ class FPS:
 
   def __init__(self):
     self.start = time.time()
-    self.count = 0
+    self.total = 0
+    self.lock = threading.Lock()
 
   def step(self, amount=1):
-    self.count += amount
+    with self.lock:
+      self.total += amount
 
   def result(self, reset=True):
-    now = time.time()
-    fps = self.count / (now - self.start)
-    if reset:
-      self.start = now
-      self.count = 0
-    return fps
+    with self.lock:
+      now = time.time()
+      fps = self.total / (now - self.start)
+      if reset:
+        self.start = now
+        self.total = 0
+      return fps

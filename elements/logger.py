@@ -117,7 +117,6 @@ class TerminalOutput:
     self._name = name
     self._limit = limit
 
-  @timer.section('terminal')
   def __call__(self, summaries):
     step = max(s for s, _, _, in summaries)
     scalars = {
@@ -338,7 +337,6 @@ class ScopeOutput(AsyncOutput):
     self.writer = scope.Writer(logdir, fps=fps)
     self.pattern = (pattern != r'.*') and re.compile(pattern)
 
-  @timer.section('scope')
   def _write(self, summaries):
     for step, name, value in summaries:
       if self.pattern and not self.pattern.search(name):
