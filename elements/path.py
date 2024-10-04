@@ -368,12 +368,15 @@ class GCSPath(Path):
     return self
 
   def glob(self, pattern):
+    pattern = pattern.rstrip('/')
+    assert pattern
     prefix = self.blob.name + '/' if self.blob else ''
-    assert prefix == '' or prefix.endswith('/'), prefix
-    assert len(pattern) >= 1, pattern
-    if '**' in pattern:
-      # We have to expand to maximum depth anyways. We have to search one depth
-      # deeper to find files which prefixes should be returned as folders.
+    if pattern == '*':
+      response = self.bucket.list_blobs(prefix=prefix, delimiter='/')
+      filenames = [x.name for x in response]  # Iterating also fills prefixes.
+      folders = [x.rstrip('/') for x in response.prefixes]
+    elif '**' in pattern:
+      # Expand full depth. Look one level deeper to extract prefixes.
       pattern2 = prefix + pattern
       pattern2 += '' if pattern2.endswith('*') else '*'
       response = self.bucket.list_blobs(prefix=prefix, match_glob=pattern2)
@@ -404,7 +407,8 @@ class GCSPath(Path):
           else:
             folders.append(child)
     results = [x.rstrip('/') for x in folders + filenames]
-    results = fnmatch.filter(results, prefix + pattern.rstrip('/'))
+    # results = fnmatch.filter(results, prefix + pattern.rstrip('/'))
+    results = fnmatch.filter(results, prefix + pattern)
     results = sorted(set(results))
     return [type(self)(f'gs://{self.bucket.name}/{x}') for x in results]
 
@@ -630,3 +634,13 @@ Path.filesystems = [
     (TFPath, lambda path: path.startswith('/cns/')),
     (LocalPath, lambda path: True),
 ]
+
+
+if __name__ == '__main__':
+  x = 'gs://dm-gdm-worldmodel-team-us-ut-da6189d76684/logdir'
+  x = GCSPath(x)
+  start = time.time()
+  print('START')
+  for x in x.glob('tdmp*/*[12]**'):
+    print(x)
+  print('DONE', time.time() - start, 'sec')
