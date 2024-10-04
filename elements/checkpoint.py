@@ -35,10 +35,11 @@ class Saveable:
 
 class Checkpoint:
 
-  def __init__(self, filename=None, parallel=True):
+  def __init__(self, filename=None, parallel=True, write=True):
     self._filename = filename and path.Path(filename)
     self._values = {}
     self._parallel = parallel
+    self._write = write
     self._promise = None
     if self._parallel:
       self._worker = concurrent.futures.ThreadPoolExecutor(1, 'checkpoint')
@@ -80,6 +81,8 @@ class Checkpoint:
     keys = tuple(self._values.keys() if keys is None else keys)
     assert all([not k.startswith('_') for k in keys]), keys
     data = {k: self._values[k].save() for k in keys}
+    if not self._write:
+      return
     if self._parallel:
       self._promise and self._promise.result()
       self._promise = self._worker.submit(self._save, filename, data)

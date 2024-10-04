@@ -407,7 +407,6 @@ class GCSPath(Path):
           else:
             folders.append(child)
     results = [x.rstrip('/') for x in folders + filenames]
-    # results = fnmatch.filter(results, prefix + pattern.rstrip('/'))
     results = fnmatch.filter(results, prefix + pattern)
     results = sorted(set(results))
     return [type(self)(f'gs://{self.bucket.name}/{x}') for x in results]
@@ -634,13 +633,3 @@ Path.filesystems = [
     (TFPath, lambda path: path.startswith('/cns/')),
     (LocalPath, lambda path: True),
 ]
-
-
-if __name__ == '__main__':
-  x = 'gs://dm-gdm-worldmodel-team-us-ut-da6189d76684/logdir'
-  x = GCSPath(x)
-  start = time.time()
-  print('START')
-  for x in x.glob('tdmp*/*[12]**'):
-    print(x)
-  print('DONE', time.time() - start, 'sec')
