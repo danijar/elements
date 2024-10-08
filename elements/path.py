@@ -77,6 +77,10 @@ class Path:
   def suffix(self):
     return ('.' + self.name.split('.', 1)[1]) if '.' in self.name else ''
 
+  @property
+  def size(self):
+    raise NotImplementedError
+
   def read(self, mode='r'):
     assert mode in 'r rb'.split(), mode
     with self.open(mode) as f:
@@ -145,6 +149,10 @@ class LocalPath(Path):
   def __init__(self, path):
     super().__init__(os.path.expanduser(str(path)))
 
+  @property
+  def size(self):
+    return os.path.getsize(str(self))
+
   def open(self, mode='r'):
     return open(str(self), mode=mode)
 
@@ -211,6 +219,10 @@ class TFPath(Path):
       tf.config.set_visible_devices([], 'GPU')
       tf.config.set_visible_devices([], 'TPU')
       type(self).gfile = tf.io.gfile
+
+  @property
+  def size(self):
+    return self.gfile.stat(str(self)).st_size
 
   def open(self, mode='r'):
     path = str(self)
@@ -333,6 +345,10 @@ class GCSPath(Path):
           client._http._auth_request.session.mount('https://', adapter)
           GCS_CLIENT = client
     return GCS_CLIENT
+
+  @property
+  def size(self):
+    return self.blob.size
 
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
