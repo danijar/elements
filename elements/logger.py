@@ -330,11 +330,13 @@ class WandBOutput:
 
 class ScopeOutput(AsyncOutput):
 
-  def __init__(self, logdir, fps=20, pattern=r'.*'):
+  def __init__(self, logdir, fps=10, pattern=r'.*'):
     super().__init__(self._write, parallel=True)
     import scope
+    import scope.writer
+    scope.writer.FPS = fps
     logdir = path.Path(logdir)
-    self.writer = scope.Writer(logdir, fps=fps)
+    self.writer = scope.Writer(logdir)
     self.pattern = (pattern != r'.*') and re.compile(pattern)
 
   def _write(self, summaries):
