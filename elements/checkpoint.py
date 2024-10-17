@@ -77,7 +77,7 @@ class Checkpoint:
   def save(self, filename=None, keys=None):
     assert self._filename or filename
     filename = path.Path(filename or self._filename)
-    printing.print_(f'Writing checkpoint: {filename}')
+    printing.print_(f'Saving checkpoint: {filename}')
     keys = tuple(self._values.keys() if keys is None else keys)
     assert all([not k.startswith('_') for k in keys]), keys
     data = {k: self._values[k].save() for k in keys}
