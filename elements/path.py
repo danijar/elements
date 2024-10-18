@@ -348,7 +348,10 @@ class GCSPath(Path):
 
   @property
   def size(self):
-    return self.blob.size
+    if self.blob.size is None:
+      self._blob = self.bucket.get_blob(self.blob.name, **gcs_retry())
+    assert isinstance(self._blob.size, int), self._blob.size
+    return self._blob.size
 
   def open(self, mode='r'):
     assert self.blob, 'is a directory'
