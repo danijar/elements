@@ -39,7 +39,10 @@ class Space:
   @property
   def classes(self):
     assert self.discrete
-    classes = self._high - self._low
+    if self.dtype == bool:
+      classes = np.full(self.shape, 2, np.int32)
+    else:
+      classes = self._high - self._low
     if not classes.ndim:
       classes = int(classes.item())
     return classes

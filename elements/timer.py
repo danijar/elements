@@ -55,7 +55,7 @@ class Timer:
       decorator = self.section(f'{name}.{method}')
       setattr(obj, method, decorator(getattr(obj, method)))
 
-  def stats(self, reset=True):
+  def stats(self, reset=True, log=False):
     if not self.enabled:
       return {}
     self.writing = True
@@ -63,23 +63,38 @@ class Timer:
     now = time.perf_counter_ns()
     passed = now - self.start
     self.start = now
-    metrics = {}
+    mets = {}
     div = lambda x, y: x and x / y
-    for key in self.paths:
-      metrics.update({
+    keys = list(self.paths)
+    for key in keys:
+      mets.update({
           f'{key}/sum': self.sums[key] / 1e9,
           f'{key}/min': self.mins[key] / 1e9,
           f'{key}/max': self.maxs[key] / 1e9,
-          f'{key}/avg': div(self.sums[key], self.counts[key]) / 1e9,
+          f'{key}/mean': div(self.sums[key], self.counts[key]) / 1e9,
           f'{key}/frac': self.sums[key] / passed,
           f'{key}/count': self.counts[key],
       })
     self.writing = False
-    fracs = {k: metrics[f'{k}/frac'] for k in self.paths}
-    fracs = sorted(fracs.items(), key=lambda x: -x[1])
-    metrics['summary'] = '\n'.join(f'- {100 * v:.0f}% {k}' for k, v in fracs)
+    lines = []
+    longest = max(len(key) for key in keys)
+    descending = sorted(keys, key=lambda k: -mets[f'{k}/frac'])
+    for key in descending:
+      count = mets[f'{key}/count']
+      if not count:
+        continue
+      perc = '{:3.0f}'.format(100 * mets[f'{key}/frac'])
+      min_ = '{:.1f}'.format(mets[f'{key}/min'])
+      mean = '{:.1f}'.format(mets[f'{key}/mean'])
+      max_ = '{:.1f}'.format(mets[f'{key}/max'])
+      detail = f'min={min_}s, mean={mean}s, max={max_}s, n={count}'
+      space = ' ' * (longest - len(key))
+      lines.append(f'- {perc}% {key} {space} ({detail})')
+    mets['summary'] = '\n'.join(lines)
+    if log:
+      print('Timer:', mets['summary'], sep='\n')
     reset and self.reset()
-    return metrics
+    return mets
 
   def reset(self):
     if not self.enabled:
