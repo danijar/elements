@@ -1,4 +1,4 @@
-__version__ = '3.17.0'
+__version__ = '3.18.1'
 
 from .agg import Agg
 from .checkpoint import Checkpoint, Saveable
@@ -17,6 +17,7 @@ from .usage import Usage
 from .utils import timestamp
 from .uuid import UUID
 
+from . import checkpoint
 from . import logger
 from . import plotting
 from . import timer

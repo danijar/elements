@@ -1,10 +1,10 @@
-import concurrent.futures
+import inspect
 import pickle
-import time
 
+from . import path as pathlib
 from . import printing
-from . import path
 from . import timer
+from . import utils
 
 
 class Saveable:
@@ -35,97 +35,167 @@ class Saveable:
 
 class Checkpoint:
 
-  def __init__(self, filename=None, parallel=True, write=True):
-    self._filename = filename and path.Path(filename)
-    self._values = {}
-    self._parallel = parallel
+  """
+  Checkpoints are stored in this file structure:
+
+  directory/
+    latest  # Contains folder name of latest complete save.
+    <timestamp>-<step>/
+      foo.pkl
+      bar.pkl
+      baz-0.pkl
+      baz-1.pkl
+      baz-2.pkl
+      done  # Empty file marking the save as complete.
+    ...
+  """
+
+  def __init__(self, directory=None, keep=1, step=None, write=True):
+    assert keep is None or keep >= 1
+    self._directory = directory and pathlib.Path(directory)
+    self._keep = keep
+    self._step = step
     self._write = write
-    self._promise = None
-    if self._parallel:
-      self._worker = concurrent.futures.ThreadPoolExecutor(1, 'checkpoint')
+    self._saveables = {}
 
   def __setattr__(self, name, value):
-    if name in ('exists', 'save', 'load'):
-      return super().__setattr__(name, value)
     if name.startswith('_'):
       return super().__setattr__(name, value)
     has_load = hasattr(value, 'load') and callable(value.load)
     has_save = hasattr(value, 'save') and callable(value.save)
     if not (has_load and has_save):
-      message = f"Checkpoint entry '{name}' must implement save() and load()."
-      raise ValueError(message)
-    self._values[name] = value
+      raise ValueError(
+          f"Checkpointed object '{name}' must implement save() and load().")
+    self._saveables[name] = value
 
   def __getattr__(self, name):
     if name.startswith('_'):
       raise AttributeError(name)
     try:
-      return self._values[name]
+      return self._saveables[name]
     except AttributeError:
       raise ValueError(name)
 
-  def exists(self, filename=None):
-    assert self._filename or filename
-    filename = path.Path(filename or self._filename)
-    exists = self._filename.exists()
-    if exists:
+  def exists(self, path=None):
+    assert self._directory or path
+    if path:
+      result = exists(path)
+    else:
+      result = bool(self.latest())
+    if result:
       print('Found existing checkpoint.')
     else:
       print('Did not find any checkpoint.')
-    return exists
-
-  def save(self, filename=None, keys=None):
-    assert self._filename or filename
-    filename = path.Path(filename or self._filename)
-    printing.print_(f'Saving checkpoint: {filename}')
-    keys = tuple(self._values.keys() if keys is None else keys)
-    assert all([not k.startswith('_') for k in keys]), keys
-    data = {k: self._values[k].save() for k in keys}
-    if not self._write:
-      return
-    if self._parallel:
-      self._promise and self._promise.result()
-      self._promise = self._worker.submit(self._save, filename, data)
-    else:
-      self._save(filename, data)
+    return result
 
   @timer.section('checkpoint_save')
-  def _save(self, filename, data):
-    data['_timestamp'] = time.time()
-    filename.parent.mkdir()
-    content = pickle.dumps(data)
-    if str(filename).startswith('gs://'):
-      filename.write(content, mode='wb')
+  def save(self, path=None, keys=None):
+    assert self._directory or path
+    if keys is None:
+      savefns = {k: v.save for k, v in self._saveables.items()}
     else:
-      # Write to a temporary file and then atomically rename, so that the file
-      # either contains a complete write or not update at all if writing was
-      # interrupted.
-      tmp = filename.parent / (filename.name + '.tmp')
-      tmp.write(content, mode='wb')
-      tmp.move(filename)
-    print('Wrote checkpoint.')
+      assert all([not k.startswith('_') for k in keys]), keys
+      savefns = {k: self._saveables[k].save for k in keys}
+    if path:
+      folder = None
+    else:
+      folder = utils.timestamp(millis=True)
+      if self._step is not None:
+        folder += f'-{int(self._step):012d}'
+      path = self._directory / folder
+    printing.print_(f'Saving checkpoint: {path}')
+    save(path, savefns, self._write)
+    if folder and self._write:
+      (self._directory / 'latest').write_text(folder)
+      self._cleanup()
+    print('Saved checkpoint.')
 
   @timer.section('checkpoint_load')
-  def load(self, filename=None, keys=None):
-    assert self._filename or filename
-    self._promise and self._promise.result()  # Wait for last save.
-    filename = path.Path(filename or self._filename)
-    printing.print_(f'Loading checkpoint: {filename}')
-    data = pickle.loads(filename.read('rb'))
-    keys = tuple(data.keys() if keys is None else keys)
-    for key in keys:
-      if key.startswith('_'):
-        continue
-      try:
-        self._values[key].load(data[key])
-      except Exception:
-        print(f"Error loading '{key}' from checkpoint.")
-        raise
-    age = time.time() - data['_timestamp']
-    printing.print_(f'Loaded checkpoint from {age:.0f} seconds ago.')
+  def load(self, path=None, keys=None):
+    assert self._directory or path
+    if keys is None:
+      loadfns = {k: v.load for k, v in self._saveables.items()}
+    else:
+      assert all([not k.startswith('_') for k in keys]), keys
+      loadfns = {k: self._saveables[k].load for k in keys}
+    if not path:
+      path = self.latest()
+      assert path
+    printing.print_(f'Loading checkpoint: {path}')
+    load(path, loadfns)
+    print('Loaded checkpoint.')
 
   def load_or_save(self):
     if self.exists():
       self.load()
     else:
       self.save()
+
+  def latest(self):
+    filename = (self._directory / 'latest')
+    if not filename.exists():
+      return None
+    return self._directory / filename.read_text()
+
+  def _cleanup(self):
+    if not self._keep:
+      return
+    folders = self._directory.glob('*')
+    folders = [x for x in folders if x.name != 'latest']
+    old = sorted(folders)[:-self._keep]
+    for folder in old:
+      folder.remove(recursive=True)
+
+
+def exists(path):
+  path = pathlib.Path(path)
+  return (path / 'done').exists()
+
+
+def save(path, savefns, write=True):
+  path = pathlib.Path(path)
+  assert not exists(path), path
+  write and path.mkdir(parents=True)
+  for name, savefn in savefns.items():
+    try:
+      data = savefn()
+      if inspect.isgenerator(data):
+        for i, shard in enumerate(data):
+          assert i < 1e5, i
+          if write:  # Iterate even if we're not writing.
+            buffer = pickle.dumps(shard)
+            (path / f'{name}-{i:04d}.pkl').write_bytes(buffer)
+      else:
+        if write:
+          buffer = pickle.dumps(data)
+          (path / f'{name}.pkl').write_bytes(buffer)
+    except Exception:
+      print(f"Error save '{name}' to checkpoint.")
+      raise
+  write and (path / 'done').write_bytes(b'')
+
+
+def load(path, loadfns):
+  path = pathlib.Path(path)
+  assert exists(path), path
+  filenames = set(path.glob('*'))
+  for name, loadfn in loadfns.items():
+    try:
+      if (path / f'{name}.pkl') in filenames:
+        buffer = (path / f'{name}.pkl').read_bytes()
+        data = pickle.loads(buffer)
+        loadfn(data)
+      elif (path / f'{name}-0000.pkl') in filenames:
+        shards = [x for x in filenames if x.name.startswith(f'{name}-')]
+        shards = sorted(shards)
+        def generator():
+          for filename in shards:
+            buffer = filename.read_bytes()
+            data = pickle.loads(buffer)
+            yield data
+        loadfn(generator())
+      else:
+        raise KeyError(name)
+    except Exception:
+      print(f"Error loading '{name}' from checkpoint.")
+      raise

@@ -55,6 +55,9 @@ class Path:
   def __str__(self):
     return self._path
 
+  def __hash__(self):
+    return hash(str(self))
+
   @property
   def parent(self):
     if '/' not in self._path:
