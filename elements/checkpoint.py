@@ -163,12 +163,16 @@ def save(path, savefns, write=True):
         for i, shard in enumerate(data):
           assert i < 1e5, i
           if write:  # Iterate even if we're not writing.
-            buffer = pickle.dumps(shard)
-            (path / f'{name}-{i:04d}.pkl').write_bytes(buffer)
+            with timer.section('checkpoint_pickle'):
+              buffer = pickle.dumps(shard)
+            with timer.section('checkpoint_write'):
+              (path / f'{name}-{i:04d}.pkl').write_bytes(buffer)
       else:
         if write:
-          buffer = pickle.dumps(data)
-          (path / f'{name}.pkl').write_bytes(buffer)
+          with timer.section('checkpoint_pickle'):
+            buffer = pickle.dumps(data)
+          with timer.section('checkpoint_write'):
+            (path / f'{name}.pkl').write_bytes(buffer)
     except Exception:
       print(f"Error save '{name}' to checkpoint.")
       raise
