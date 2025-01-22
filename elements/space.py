@@ -47,6 +47,14 @@ class Space:
       classes = int(classes.item())
     return classes
 
+  def __eq__(self, other):
+    return (
+        self._dtype == other.dtype and
+        self._shape == other.shape and
+        np.all(self._low == other.low) and
+        np.all(self._high == other.high),
+    )
+
   def __repr__(self):
     low = None if self.low is None else self.low.min()
     high = None if self.high is None else self.high.min()
