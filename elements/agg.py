@@ -1,33 +1,35 @@
+import functools
 import math
 import operator
-from collections import defaultdict
-from functools import partial as bind
 
 import numpy as np
 
 
+RULES = (
+    ((lambda n, x: isinstance(x, str)), 'last'),
+    ((lambda n, x: x.ndim == 0), 'mean'),
+    ((lambda n, x: True), 'concat'),
+)
+
+
 class Agg:
 
-  def __init__(self, maxlen=1e6):
-    self.reducers = defaultdict(list)
-    self.names = {}
+  def __init__(self, rules=None, maxlen=1e6):
+    self.rules = RULES if rules is None else rules
+    self.reducers = {}
     self.maxlen = int(maxlen)
 
-  def add(self, key_or_dict, value=None, agg='default', prefix=None):
-    if value is not None:
-      self._add_single(key_or_dict, value, agg, prefix)
-      return
-    for key, value in key_or_dict.items():
-      self._add_single(key, value, agg, prefix)
+  def add(self, key_or_dict, value=None, agg=None, prefix=None):
+    if value is None:
+      for key, value in key_or_dict.items():
+        self._add(key, value, agg, prefix)
+    else:
+      self._add(key_or_dict, value, agg, prefix)
 
   def result(self, reset=True, prefix=None):
     metrics = {}
-    for key, reducers in self.reducers.items():
-      if len(reducers) == 1:
-        metrics[key] = reducers[0].current()
-      else:
-        for name, reducer in zip(self.names[key], reducers):
-          metrics[f'{key}/{name}'] = reducer.current()
+    for key, reducer in self.reducers.items():
+      metrics[key] = reducer.current()
     if prefix:
       metrics = {f'{prefix}/{k}': v for k, v in metrics.items()}
     reset and self.reset()
@@ -36,49 +38,37 @@ class Agg:
   def reset(self):
     self.reducers.clear()
 
-  def _add_single(self, key, value, agg, prefix):
-    key = f'{prefix}/{key}' if prefix else key
-    reducers = self.reducers[key]
-    if reducers:
-      for reducer in reducers:
-        reducer.update(value)
-      return
-    if agg == 'default':
-      ndim = np.asarray(value).ndim
-      if np.issubdtype(np.asarray(value).dtype, str):
-        agg = 'last'
-      elif ndim == 0:
-        agg = 'avg'
-      elif ndim == 1:  # distribution
-        agg = 'concat'
-      elif ndim == 4:  # video
-        agg = 'concat'
-      else:
-        agg = 'last'
-    if isinstance(agg, str):
-      aggs = (agg,)
-      self.names[key] = None
+  def _add(self, key, value, agg, prefix):
+    if prefix:
+      key = f'{prefix}/{key}'
+    if not isinstance(value, str):
+      value = np.asarray(value)
+    if key in self.reducers:
+      self.reducers[key].update(value)
     else:
-      aggs = agg
-      self.names[key] = aggs
-    for agg in aggs:
-      if agg == 'avg':
-        reducer = Mean(value)
-      elif agg == 'sum':
-        reducer = Sum(value)
-      elif agg == 'min':
-        reducer = Min(value)
-      elif agg == 'max':
-        reducer = Max(value)
-      elif agg == 'stack':
-        reducer = Stack(value, self.maxlen)
-      elif agg == 'concat':
-        reducer = Concat(value, self.maxlen)
-      elif agg == 'last':
-        reducer = Last(value)
+      self.reducers[key] = self._initial(key, value, agg)
+
+  def _initial(self, key, value, agg):
+    if not agg:
+      for applies, agg in self.rules:
+        if applies(key, value):
+          break
       else:
-        raise ValueError(agg)
-      reducers.append(reducer)
+        raise ValueError(
+            "No rule applied to infer aggregation strategy for metric " +
+            f"with key '{key}' and value type '{type(value)}'. Please " +
+            "specify add(..., agg=...) explicitly.")
+    cls = {
+        'mean': Mean,
+        'avg': Mean,
+        'sum': Sum,
+        'min': Min,
+        'max': Max,
+        'stack': functools.partial(Stack, maxlen=self.maxlen),
+        'concat': functools.partial(Concat, maxlen=self.maxlen),
+        'last': Last,
+    }[agg]
+    return cls(value)
 
 
 class Reducer:
@@ -169,9 +159,11 @@ class Last:
     return self.value
 
 
-Sum = bind(
+Sum = functools.partial(
     Reducer, operator.add, lambda x, y: np.add(x, y, out=x, dtype=np.float64))
-Min = bind(
+
+Min = functools.partial(
     Reducer, min, lambda x, y: np.minimum(x, y, out=x, dtype=np.float64))
-Max = bind(
+
+Max = functools.partial(
     Reducer, max, lambda x, y: np.maximum(x, y, out=x, dtype=np.float64))
