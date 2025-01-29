@@ -135,7 +135,7 @@ class Checkpoint:
     filename = (self._directory / 'latest')
     if not filename.exists():
       return None
-    return self._directory / filename.read_text()
+    return self._directory / filename.read_text().strip('\n')
 
   def _cleanup(self):
     if not self._keep:
