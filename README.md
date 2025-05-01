@@ -219,7 +219,7 @@ print(cp.model)
 Collect timing statistics about the run time of different parts of a program.
 Measures code inside sections and can wrap methods into sections. Returns
 execution count, execution time, fraction of overall program time, and more.
-The resulting statisticse can be added to the logger.
+The resulting statistics can be added to the logger.
 
 ```python
 timer = Timer()
