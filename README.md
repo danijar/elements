@@ -49,8 +49,8 @@ logger.scalar('foo', 42)
 logger.scalar('foo', 43)
 logger.scalar('foo', 44)
 logger.vector('vector', np.zeros(100))
-logger.image('image', np.zeros((800, 600, 3, np.uint8)))
-logger.video('video', np.zeros((100, 64, 64, 3, np.uint8)))
+logger.image('image', np.zeros((800, 600, 3), np.uint8))
+logger.video('video', np.zeros((100, 64, 64, 3), np.uint8))
 
 logger.add({'foo': 42, 'vector': np.zeros(100)}, prefix='scope')
 
