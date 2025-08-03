@@ -1,9 +1,10 @@
-__version__ = '3.19.1'
+__version__ = '3.20.0'
 
 from .agg import Agg
 from .checkpoint import Checkpoint, Saveable
 from .config import Config
 from .counter import Counter
+from .diskcache import diskcache
 from .flags import Flags
 from .fps import FPS
 from .logger import Logger
