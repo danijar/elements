@@ -39,3 +39,14 @@ class TestPath:
     assert (empty / 'foo' / 'bar.txt').parent.parent == empty
     assert root.parent == root
     assert empty.parent == empty
+
+  def test_with_suffix(self):
+    examples = [
+        ('foo.a', '.b', 'foo.b'),
+        ('foo/bar.a.b', '.c', 'foo/bar.c'),
+        ('foo', '.abc', 'foo.abc'),
+        ('foo.xyz', '', 'foo'),
+        ('foo', '', 'foo'),
+    ]
+    for path, suffix, output in examples:
+      assert str(elements.Path(path).with_suffix(suffix)) == output

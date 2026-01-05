@@ -106,6 +106,10 @@ class Path:
   def write_bytes(self, content):
     self.write(content, mode='wb')
 
+  def with_suffix(self, suffix):
+    path = str(self.parent / self.stem) + suffix
+    return type(self)(path)
+
   def open(self, mode='r'):
     raise NotImplementedError
 
