@@ -43,7 +43,7 @@ class TestPath:
   def test_with_suffix(self):
     examples = [
         ('foo.a', '.b', 'foo.b'),
-        ('foo/bar.a.b', '.c', 'foo/bar.c'),
+        ('foo/bar.a.b', '.c', 'foo/bar.a.c'),
         ('foo', '.abc', 'foo.abc'),
         ('foo.xyz', '', 'foo'),
         ('foo', '', 'foo'),

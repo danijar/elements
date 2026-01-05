@@ -74,11 +74,11 @@ class Path:
 
   @property
   def stem(self):
-    return self.name.split('.', 1)[0] if '.' in self.name else self.name
+    return self.name.rsplit('.', 1)[0] if '.' in self.name else self.name
 
   @property
   def suffix(self):
-    return ('.' + self.name.split('.', 1)[1]) if '.' in self.name else ''
+    return ('.' + self.name.rsplit('.', 1)[1]) if '.' in self.name else ''
 
   @property
   def size(self):
