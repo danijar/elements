@@ -134,7 +134,8 @@ class Space:
 
 
 def issubdtype(a, b):
-  if a in [getattr(ml_dtypes, name) for name in dir(ml_dtypes) if 'float' in name]:
+  custom_float_dtypes = [getattr(ml_dtypes, name) for name in dir(ml_dtypes) if 'float' in name]
+  if a in custom_float_dtypes:
     return b in {a, np.floating, np.inexact, np.number, np.generic}
   if a in [ml_dtypes.int2, ml_dtypes.int4]:
     return b in {a, np.signedinteger, np.integer, np.number, np.generic}
