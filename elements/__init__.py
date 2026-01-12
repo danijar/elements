@@ -1,5 +1,3 @@
-__version__ = '3.21.0'
-
 from .agg import Agg
 from .checkpoint import Checkpoint, Saveable
 from .config import Config
