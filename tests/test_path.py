@@ -50,3 +50,16 @@ class TestPath:
     ]
     for path, suffix, output in examples:
       assert str(elements.Path(path).with_suffix(suffix)) == output
+
+  def test_relative_to(self):
+    examples = [
+        ('/', '/foo/bar', 'foo/bar'),
+        ('/foo/a/b/', '/foo/a/b/c/d', 'c/d'),
+        ('foo/a/b/', 'foo/a/b/c/d', 'c/d'),
+        ('foo/a/b', 'foo/a/b/c/d', 'c/d'),
+        ('foo/a', 'foo/a', '.'),
+    ]
+    for parent, path, output in examples:
+      parent = elements.Path(parent)
+      path = elements.Path(path)
+      assert str(path.relative_to(parent)) == output
