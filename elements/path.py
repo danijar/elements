@@ -110,6 +110,15 @@ class Path:
     path = str(self.parent / self.stem) + suffix
     return type(self)(path)
 
+  def relative_to(self, parent):
+    assert str(self).startswith(str(parent)), (parent, self)
+    if str(self) == str(parent):
+      return type(self)('.')
+    relative = str(self).removeprefix(str(parent))
+    if relative.startswith('/'):
+      relative = relative.removeprefix('/')
+    return type(self)(relative)
+
   def open(self, mode='r'):
     raise NotImplementedError
 
@@ -585,6 +594,7 @@ class GCSAppendFile:
     self.target = blob
     self.temp = storage.Blob('tmp/' + str(uuid.uuid4()), blob.bucket)
     self.fp = self.temp.open(mode.replace('a', 'w'), **gcs_retry(300))
+    self.pos = self.target.size or 0
 
   def __enter__(self):
     return self
@@ -602,7 +612,7 @@ class GCSAppendFile:
     return False
 
   def tell(self):
-    raise io.UnsupportedOperation
+    return self.pos
 
   def seek(self, pos, mode=os.SEEK_SET):
     raise io.UnsupportedOperation
@@ -612,6 +622,7 @@ class GCSAppendFile:
 
   def write(self, b):
     self.fp.write(b)
+    self.pos += len(b)
 
   def close(self):
     import google.cloud.exceptions
