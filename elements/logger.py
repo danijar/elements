@@ -319,10 +319,12 @@ class WandBOutput:
         bystep[step][name] = wandb.Image(value)
       elif len(value.shape) == 4:
         assert value.shape[3] in [1, 3, 4], value.shape
+        if value.shape[3] == 1:  # Address "ValueError: Can't write images with one color channel." issue
+          value = np.concatenate((value,) * 3, axis=3)
         value = np.transpose(value, [0, 3, 1, 2])
         if value.dtype != np.uint8:
           value = (255 * np.clip(value, 0, 1)).astype(np.uint8)
-        bystep[step][name] = wandb.Video(value)
+        bystep[step][name] = wandb.Video(value, format='gif')
 
     for step, metrics in bystep.items():
       self._wandb.log(metrics, step=step)
