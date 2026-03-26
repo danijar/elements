@@ -322,7 +322,7 @@ class WandBOutput:
         value = np.transpose(value, [0, 3, 1, 2])
         if value.dtype != np.uint8:
           value = (255 * np.clip(value, 0, 1)).astype(np.uint8)
-        bystep[step][name] = wandb.Video(value)
+        bystep[step][name] = wandb.Video(value, format='mp4')
 
     for step, metrics in bystep.items():
       self._wandb.log(metrics, step=step)
