@@ -726,8 +726,8 @@ class S3Path(Path):
       content = prefix + content
     if isinstance(content, str):
       content = content.encode('utf-8')
-    self.client.put_object(
-      Bucket=self._bucket_name, Key=self._key, Body=content
+    self.client.upload_fileobj(
+      io.BytesIO(content), self._bucket_name, self._key
     )
 
   def absolute(self):
@@ -1005,8 +1005,8 @@ class S3WriteFile:
     content = self.buffer.getvalue()
     if isinstance(content, str):
       content = content.encode('utf-8')
-    self.s3path.client.put_object(
-      Bucket=self.s3path._bucket_name, Key=self.s3path._key, Body=content
+    self.s3path.client.upload_fileobj(
+      io.BytesIO(content), self.s3path._bucket_name, self.s3path._key
     )
 
 
@@ -1055,8 +1055,8 @@ class S3AppendFile:
       content = existing + new_data
     else:
       content = new_data
-    self.s3path.client.put_object(
-      Bucket=self.s3path._bucket_name, Key=self.s3path._key, Body=content
+    self.s3path.client.upload_fileobj(
+      io.BytesIO(content), self.s3path._bucket_name, self.s3path._key
     )
 
 
