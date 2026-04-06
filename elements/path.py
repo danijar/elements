@@ -774,6 +774,21 @@ class S3Path(Path):
       )
       if resp.get('Contents'):
         results.append(target)
+    elif '**' not in pattern and '/' not in pattern:
+      # Single-level glob (e.g. '*', '*.txt', 'foo*').
+      # Use Delimiter='/' to only get immediate children.
+      pages = paginator.paginate(
+        Bucket=self._bucket_name, Prefix=prefix, Delimiter='/'
+      )
+      keys = []
+      dirs = []
+      for page in pages:
+        for obj in page.get('Contents', []):
+          keys.append(obj['Key'])
+        for cp in page.get('CommonPrefixes', []):
+          dirs.append(cp['Prefix'].rstrip('/'))
+      all_paths = sorted(set([k.rstrip('/') for k in keys] + dirs))
+      results = fnmatch.filter(all_paths, prefix + pattern)
     else:
       # General glob: list with common prefix, then filter.
       # Find the longest literal prefix before any glob character.
