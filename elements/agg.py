@@ -5,17 +5,22 @@ import operator
 import numpy as np
 
 
-RULES = (
-    ((lambda n, x: isinstance(x, str)), 'last'),
-    ((lambda n, x: x.ndim == 0), 'mean'),
-    ((lambda n, x: True), 'concat'),
-)
+def default_rules(bdims=0):
+  return (
+      ((lambda n, x: isinstance(x, str)), 'last'),
+      ((lambda n, x: x.ndim == bdims), 'mean'),
+      ((lambda n, x: True), 'concat'),
+  )
+
+
+RULES = default_rules(0)
 
 
 class Agg:
 
-  def __init__(self, rules=None, maxlen=1e6):
-    self.rules = RULES if rules is None else rules
+  def __init__(self, rules=None, maxlen=1e6, bdims=0):
+    self.bdims = bdims
+    self.rules = default_rules(bdims) if rules is None else rules
     self.reducers = {}
     self.maxlen = int(maxlen)
 
@@ -68,12 +73,12 @@ class Agg:
         'concat': functools.partial(Concat, maxlen=self.maxlen),
         'last': Last,
     }[agg]
-    return cls(value)
+    return cls(value, bdims=self.bdims)
 
 
 class Reducer:
 
-  def __init__(self, scalar_fn, array_fn, initial):
+  def __init__(self, scalar_fn, array_fn, initial, bdims):
     self.is_scalar = isinstance(initial, (int, float))
     self.fn = scalar_fn if self.is_scalar else array_fn
     self.interm = self._input(initial)
@@ -107,8 +112,8 @@ class Reducer:
 
 class Mean:
 
-  def __init__(self, initial):
-    self.reducer = Sum(initial)
+  def __init__(self, initial, bdims):
+    self.reducer = Sum(initial, bdims=bdims)
 
   def update(self, value):
     self.reducer.update(value)
@@ -119,7 +124,8 @@ class Mean:
 
 class Stack:
 
-  def __init__(self, initial, maxlen=1e5):
+  def __init__(self, initial, bdims, maxlen=1e5):
+    self.bdims = bdims
     self.stack = [initial]
     self.maxlen = int(maxlen)
 
@@ -128,28 +134,30 @@ class Stack:
       self.stack.append(value)
 
   def current(self):
-    return np.stack(self.stack)
+    return np.stack(self.stack, axis=self.bdims)
 
 
 class Concat:
 
-  def __init__(self, initial, maxlen=1e5):
-    self.values = [initial]
-    self.len = len(self.values[-1])
+  def __init__(self, initial, bdims, maxlen=1e5):
+    self.bdims = bdims
     self.maxlen = int(maxlen)
+    self.values = [initial]
+    self.len = initial.shape[bdims]
 
   def update(self, value):
     if self.len < self.maxlen:
-      self.values.append(value[:self.maxlen - self.len])
-      self.len += len(self.values[-1])
+      idx = (slice(None),) * self.bdims + (slice(None, self.maxlen - self.len),)
+      self.values.append(value[idx])
+      self.len += self.values[-1].shape[self.bdims]
 
   def current(self):
-    return np.concatenate(self.values)
+    return np.concatenate(self.values, axis=self.bdims)
 
 
 class Last:
 
-  def __init__(self, initial):
+  def __init__(self, initial, bdims):
     self.value = initial
 
   def update(self, value):
