@@ -173,7 +173,7 @@ class LocalPath(Path):
     return open(str(self), mode=mode)
 
   def absolute(self):
-    return type(self)(os.path.absolute(str(self)))
+    return type(self)(os.path.abspath(str(self)))
 
   def glob(self, pattern):
     for path in globlib.glob(f'{str(self)}/{pattern}', recursive=True):
@@ -621,8 +621,9 @@ class GCSAppendFile:
     raise io.UnsupportedOperation
 
   def write(self, b):
-    self.fp.write(b)
-    self.pos += len(b)
+    n = self.fp.write(b)
+    self.pos += n
+    return n
 
   def close(self):
     import google.cloud.exceptions
@@ -999,7 +1000,7 @@ class S3WriteFile:
     return self.buffer.tell()
 
   def write(self, data):
-    self.buffer.write(data)
+    return self.buffer.write(data)
 
   def close(self):
     content = self.buffer.getvalue()
@@ -1043,8 +1044,9 @@ class S3AppendFile:
     raise io.UnsupportedOperation
 
   def write(self, data):
-    self.buffer.write(data)
-    self.pos += len(data)
+    n = self.buffer.write(data)
+    self.pos += n
+    return n
 
   def close(self):
     new_data = self.buffer.getvalue()
