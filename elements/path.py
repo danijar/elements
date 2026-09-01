@@ -195,18 +195,20 @@ class LocalPath(Path):
     os.makedirs(str(self), exist_ok=True)
 
   def remove(self, recursive=False):
-    if recursive:
+    if recursive and self.isdir():
       shutil.rmtree(self)
+    elif self.isdir():
+      os.rmdir(str(self))
     else:
-      if self.isdir():
-        os.rmdir(str(self))
-      else:
-        os.remove(str(self))
+      os.remove(str(self))
 
   def copy(self, dest, recursive=False):
     dest = Path(dest)
     if isinstance(dest, type(self)):
-      shutil.copy2(self, type(self)(dest))
+      if recursive and self.isdir():
+        shutil.copytree(self, type(self)(dest))
+      else:
+        shutil.copy2(self, type(self)(dest))
     else:
       _copy_across_filesystems(self, dest, recursive)
 
