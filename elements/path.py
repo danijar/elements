@@ -575,6 +575,8 @@ class GCSReadFile:
     if not self.fetched:
       self.blob = self.blob.bucket.get_blob(self.blob.name, **gcs_retry())
       self.fetched = True
+    if size == 0 or self.pos >= self.blob.size:
+      return b''
     end = min(self.pos + size, self.blob.size)
     result = self.blob.download_as_bytes(
         self.client, start=self.pos, end=end, raw_download=True,
@@ -625,6 +627,9 @@ class GCSAppendFile:
   def write(self, b):
     self.fp.write(b)
     self.pos += len(b)
+
+  def flush(self):
+    pass
 
   def close(self):
     import google.cloud.exceptions
