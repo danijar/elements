@@ -15,6 +15,7 @@ requires-python = ">=3.10"
 dependencies = [
   "google-auth",
   "google-cloud-storage",
+  "ml_dtypes",
   "numpy",
   "psutil",
   "ruamel.yaml",
