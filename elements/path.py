@@ -119,7 +119,7 @@ class Path:
       relative = relative.removeprefix('/')
     return type(self)(relative)
 
-  def open(self, mode='r'):
+  def open(self, mode='r', buffering=-1):
     raise NotImplementedError
 
   def absolute(self):
@@ -169,8 +169,8 @@ class LocalPath(Path):
   def size(self):
     return os.path.getsize(str(self))
 
-  def open(self, mode='r'):
-    return open(str(self), mode=mode)
+  def open(self, mode='r', buffering=-1):
+    return open(str(self), mode=mode, buffering=buffering)
 
   def absolute(self):
     return type(self)(os.path.absolute(str(self)))
@@ -242,7 +242,8 @@ class TFPath(Path):
   def size(self):
     return self.gfile.stat(str(self)).st_size
 
-  def open(self, mode='r'):
+  def open(self, mode='r', buffering=-1):
+    del buffering
     path = str(self)
     if 'a' in mode and path.startswith('/cns/'):
       path += '%r=3.2'
@@ -371,7 +372,8 @@ class GCSPath(Path):
     assert isinstance(self._blob.size, int), self._blob.size
     return self._blob.size
 
-  def open(self, mode='r'):
+  def open(self, mode='r', buffering=-1):
+    del buffering
     assert self.blob, 'is a directory'
     if 'r' in mode:
       return GCSReadFile(self.blob, self.client)
