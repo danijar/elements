@@ -163,7 +163,10 @@ class LocalPath(Path):
   __slots__ = ('_path',)
 
   def __init__(self, path):
-    super().__init__(os.path.expanduser(str(path)))
+    path = os.path.expanduser(str(path))
+    if os.sep != '/':
+      path = path.replace(os.sep, '/')
+    super().__init__(path)
 
   @property
   def size(self):
