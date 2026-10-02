@@ -1,3 +1,5 @@
+import os
+
 import elements
 import pytest
 
@@ -63,3 +65,18 @@ class TestPath:
       parent = elements.Path(parent)
       path = elements.Path(path)
       assert str(path.relative_to(parent)) == output
+
+  @pytest.mark.parametrize('relative', [True, False])
+  def test_absolute_keeps_file_access(self, tmp_path, monkeypatch, relative):
+    file = tmp_path / 'weights.npz'
+    file.write_bytes(b'checkpoint')
+    monkeypatch.chdir(tmp_path)
+    path = elements.Path('weights.npz' if relative else file)
+
+    absolute = path.absolute()
+
+    assert os.path.isabs(os.fspath(absolute))
+    assert os.path.normpath(os.fspath(absolute)) == str(file.absolute())
+    assert absolute.read_bytes() == b'checkpoint'
+    assert absolute.absolute() == absolute
+
