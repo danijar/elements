@@ -173,7 +173,7 @@ class LocalPath(Path):
     return open(str(self), mode=mode, buffering=buffering)
 
   def absolute(self):
-    return type(self)(os.path.absolute(str(self)))
+    return type(self)(os.path.abspath(str(self)))
 
   def glob(self, pattern):
     for path in globlib.glob(f'{str(self)}/{pattern}', recursive=True):
