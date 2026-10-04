@@ -31,7 +31,7 @@ class Path:
 
   def __init__(self, path):
     assert isinstance(path, str)
-    path = re.sub(r'^\./*', '', path)  # Remove leading dot or dot slashes.
+    path = re.sub(r'^\./+', '', path)  # Remove leading dot slashes.
     path = re.sub(r'(?<=[^/])/$', '', path)  # Remove single trailing slash.
     path = path or '.'  # Empty path is represented by a dot.
     self._path = path
@@ -176,7 +176,7 @@ class LocalPath(Path):
     return open(str(self), mode=mode, buffering=buffering)
 
   def absolute(self):
-    return type(self)(os.path.absolute(str(self)))
+    return type(self)(os.path.abspath(str(self)))
 
   def glob(self, pattern):
     for path in globlib.glob(f'{str(self)}/{pattern}', recursive=True):
