@@ -588,7 +588,7 @@ wheels = [
 
 [[package]]
 name = "elements"
-version = "3.22.0"
+version = "3.22.4"
 source = { editable = "." }
 dependencies = [
     { name = "google-auth" },
