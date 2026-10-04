@@ -310,14 +310,19 @@ class TFPath(Path):
 
 
 def gcs_retry(duration=60):
-    from google.cloud.storage.retry import DEFAULT_RETRY
+    if duration not in GCS_RETRIES:
+        from google.cloud.storage.retry import DEFAULT_RETRY
 
-    return dict(timeout=duration, retry=DEFAULT_RETRY.with_deadline(duration))
+        GCS_RETRIES[duration] = dict(
+            timeout=duration, retry=DEFAULT_RETRY.with_deadline(duration)
+        )
+    return GCS_RETRIES[duration]
 
 
 GCS_LOCK = threading.RLock()
 GCS_CLIENT = None
 GCS_BUCKETS = {}
+GCS_RETRIES = {}
 
 
 class GCSPath(Path):
@@ -341,7 +346,7 @@ class GCSPath(Path):
             from google.cloud import storage
 
             path = str(self)[5:]
-            name = path.split('/', 1)[1] if '/' in path[5:] else None
+            name = path.split('/', 1)[1] if '/' in path else None
             self._blob = name and storage.Blob(name, self.bucket)
         return self._blob
 
@@ -351,14 +356,7 @@ class GCSPath(Path):
         if bucket not in GCS_BUCKETS:
             with GCS_LOCK:
                 if bucket not in GCS_BUCKETS:
-                    import google
-
-                    try:
-                        GCS_BUCKETS[bucket] = self.client.get_bucket(
-                            bucket, **gcs_retry()
-                        )
-                    except google.api_core.exceptions.NotFound:
-                        return None
+                    GCS_BUCKETS[bucket] = self.client.bucket(bucket)
         return GCS_BUCKETS[bucket]
 
     @property
@@ -389,8 +387,8 @@ class GCSPath(Path):
 
     @property
     def size(self):
-        if self.blob.size is None:
-            self._blob = self.bucket.get_blob(self.blob.name, **gcs_retry())
+        if self.blob.size is None and not self.isfile():
+            raise FileNotFoundError(str(self))
         assert isinstance(self._blob.size, int), self._blob.size
         return self._blob.size
 
@@ -487,25 +485,32 @@ class GCSPath(Path):
         return [type(self)(f'gs://{self.bucket.name}/{x}') for x in results]
 
     def exists(self):
-        if not self.bucket:
-            return False
-        return self.isfile() or self.isdir()
+        if not self.blob:
+            return self.bucket.exists(self.client, **gcs_retry())
+        return self.isfile() or self._hasdir()
 
     def isfile(self):
-        if not self.bucket or not self.blob:
+        if not self.blob:
             return False
-        return self.blob.exists(self.client)
+        # Fetches the full metadata, so a subsequent size lookup is free.
+        blob = self.bucket.get_blob(self.blob.name, **gcs_retry())
+        if blob is None:
+            return False
+        self._blob = blob
+        return True
 
     def isdir(self):
-        from google.cloud import storage
-
-        if not self.bucket:
-            return False
         if not self.blob:
-            return self.bucket.exists()
+            return self.bucket.exists(self.client, **gcs_retry())
         if self.isfile():
             return False
-        if storage.Blob(self.blob.name + '/', self.bucket).exists():
+        return self._hasdir()
+
+    def _hasdir(self):
+        from google.cloud import storage
+
+        folder = storage.Blob(self.blob.name + '/', self.bucket)
+        if folder.exists(self.client, **gcs_retry()):
             return True
         try:
             next(iter(self.glob('*')))
@@ -576,7 +581,7 @@ class GCSReadFile:
     def __init__(self, blob, client):
         self.blob = blob
         self.client = client
-        self.fetched = False
+        self.fetched = blob.size is not None
         self.pos = 0
 
     def __enter__(self):
