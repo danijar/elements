@@ -1,7 +1,6 @@
 import os
 
 import elements
-import pytest
 
 
 class TestPath:
@@ -72,11 +71,26 @@ class TestPath:
     file.write_bytes(b'checkpoint')
     monkeypatch.chdir(tmp_path)
     path = elements.Path('weights.npz' if relative else file)
-
     absolute = path.absolute()
-
     assert os.path.isabs(os.fspath(absolute))
     assert os.path.normpath(os.fspath(absolute)) == str(file.absolute())
     assert absolute.read_bytes() == b'checkpoint'
     assert absolute.absolute() == absolute
 
+  def test_hidden_file_path_retains_leading_dot(self, tmp_path, monkeypatch):
+    (tmp_path / '.checkpoint').write_bytes(b'hidden checkpoint')
+    (tmp_path / 'checkpoint').write_bytes(b'different checkpoint')
+    monkeypatch.chdir(tmp_path)
+    path = elements.Path('.checkpoint')
+    assert path.read_bytes() == b'hidden checkpoint'
+    assert str(path) == '.checkpoint'
+
+  def test_parent_relative_path_does_not_read_current_directory(self, tmp_path, monkeypatch):
+    (tmp_path / 'checkpoint.npz').write_bytes(b'parent checkpoint')
+    child = tmp_path / 'child'
+    child.mkdir()
+    (child / 'checkpoint.npz').write_bytes(b'wrong child checkpoint')
+    monkeypatch.chdir(child)
+    path = elements.Path('../checkpoint.npz')
+    assert path.read_bytes() == b'parent checkpoint'
+    assert str(elements.Path('..')) == '..'

@@ -31,7 +31,7 @@ class Path:
 
   def __init__(self, path):
     assert isinstance(path, str)
-    path = re.sub(r'^\./*', '', path)  # Remove leading dot or dot slashes.
+    path = re.sub(r'^\./+', '', path)  # Remove leading dot slashes.
     path = re.sub(r'(?<=[^/])/$', '', path)  # Remove single trailing slash.
     path = path or '.'  # Empty path is represented by a dot.
     self._path = path
