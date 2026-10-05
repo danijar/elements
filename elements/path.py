@@ -175,7 +175,24 @@ class LocalPath(Path):
     __slots__ = ('_path',)
 
     def __init__(self, path):
-        super().__init__(os.path.expanduser(str(path)))
+        path = os.path.expanduser(str(path))
+        if os.sep != '/':
+            path = path.replace(os.sep, '/')
+        super().__init__(path)
+        if os.sep == '\\':
+            drive, rest = os.path.splitdrive(path)
+            unc = re.fullmatch(r'//(?![?.]/)[^/]+/[^/]+', drive)
+            if drive and (rest == '/' or (not rest and unc)):
+                self._path = drive + '/'
+
+    @property
+    def parent(self):
+        parent = super().parent
+        if os.sep == '\\':
+            drive, rest = os.path.splitdrive(str(self))
+            if drive and rest.startswith('/') and str(parent) == drive:
+                return type(self)(drive + '/')
+        return parent
 
     @property
     def size(self):
