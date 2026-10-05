@@ -1,9 +1,21 @@
+import ntpath
 import os
 from pathlib import PureWindowsPath
+from types import SimpleNamespace
 
 import pytest
 
 import elements
+
+
+@pytest.fixture
+def windows_path(monkeypatch):
+    # Exercise Windows metadata on POSIX without changing process-wide os.
+    if os.sep != '\\':
+        monkeypatch.setattr(
+            elements.path, 'os', SimpleNamespace(sep='\\', path=ntpath)
+        )
+    return elements.Path
 
 
 class TestPath:
@@ -133,6 +145,30 @@ class TestPath:
         assert actual.name == expected.name
         assert str(actual.parent) == expected.parent.as_posix()
         assert actual.stem == expected.stem
+        assert [str(parent) for parent in actual.parents] == [
+            parent.as_posix() for parent in expected.parents
+        ]
+        assert os.path.isabs(os.fspath(actual))
+
+    @pytest.mark.parametrize(
+        'native',
+        ['C:\\', 'C:/', r'C:\data', r'\\server\share', '\\\\server\\share\\'],
+    )
+    def test_windows_roots_and_parents(self, native, windows_path):
+        expected = PureWindowsPath(native)
+        actual = windows_path(native)
+        assert actual.name == expected.name
+        assert str(actual.parent) == expected.parent.as_posix()
+        assert actual.stem == expected.stem
+        assert [str(parent) for parent in actual.parents] == [
+            parent.as_posix() for parent in expected.parents
+        ]
+        assert ntpath.isabs(os.fspath(actual))
+
+    def test_windows_drive_relative_root_is_preserved(self, windows_path):
+        actual = windows_path('C:')
+        assert str(actual) == 'C:'
+        assert not ntpath.isabs(os.fspath(actual))
 
     @pytest.mark.skipif(
         os.sep == '\\', reason='Backslashes are separators on Windows'
