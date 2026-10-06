@@ -21,7 +21,9 @@ class DiskCache:
 
   def __init__(self, fn, name=None, refresh=None, verbose=None, root=None):
     if name is None:
-      name = f'{pathlib.Path(__file__).stem}-{fn.__name__}'
+      identity = f'{fn.__module__}:{fn.__qualname__}'
+      digest = hashlib.sha256(identity.encode('utf8')).hexdigest()
+      name = f'diskcache-{digest}'
     self.fn = fn
     self.folder = pathlib.Path(diskcache.root if root is None else root) / name
     self.refresh = diskcache.refresh if refresh is None else refresh
