@@ -48,11 +48,13 @@ class Space:
     return classes
 
   def __eq__(self, other):
-    return (
+    if not isinstance(other, Space):
+      return NotImplemented
+    return bool(
         self._dtype == other.dtype and
         self._shape == other.shape and
         np.all(self._low == other.low) and
-        np.all(self._high == other.high),
+        np.all(self._high == other.high)
     )
 
   def __repr__(self):
